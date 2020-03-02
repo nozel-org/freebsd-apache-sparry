@@ -20,7 +20,7 @@
 #############################################################################
 
 # remindbot version
-WEBOT_VERSION='0.1.0'
+SPARRY_VERSION='0.1.0'
 
 # apache parameters
 APACHE_CONFDIR='/usr/local/etc/apache24/Includes'
@@ -61,18 +61,15 @@ while test -n "$1"; do
             ARGUMENT_VERSION='1'
             shift
             ;;
-
         --help|help|-h)
             ARGUMENT_HELP='1'
             shift
             ;;
-
         # features
         --add-webconfig|-a)
             ARGUMENT_ADD_WEBCONFIG='1'
             shift
             ;;
-
         # other
         *)
             ARGUMENT_NONE='1'
@@ -87,42 +84,42 @@ done
 
 # argument errors
 error_invalid_option() {
-    echo 'webot: invalid argument'
-    echo "Use 'webot --help' for a list of valid arguments."
+    echo 'sparry: invalid argument'
+    echo "Use 'sparry --help' for a list of valid arguments."
     exit 1
 }
 
 error_wrong_amount_of_arguments() {
-    echo 'webot: wrong amount of arguments'
-    echo "Use 'webot --help' for a list of valid arguments."
+    echo 'sparry: wrong amount of arguments'
+    echo "Use 'sparry --help' for a list of valid arguments."
     exit 1
 }
 
 # requirement errors
 error_os_not_supported() {
-    echo 'webot: operating system is not supported.'
+    echo 'sparry: operating system is not supported.'
     exit 1
 }
 
 error_apache_not_installed() {
-    echo 'webot: apache not installed'
+    echo 'sparry: apache not installed'
     echo "use 'pkg install apache24' or install apache from ports."
     exit 1
 }
 
 error_certbot_not_installed() {
-    echo 'webot: certbot not installed'
+    echo 'sparry: certbot not installed'
     echo "use 'pkg install py37-certbot py37-certbot-apache' or install certbot from ports."
 }
 
 error_no_root_privileges() {
-    echo 'webot: you need to be root to perform this command'
-    echo "use 'sudo webot', 'sudo -s' or run webot as root user."
+    echo 'sparry: you need to be root to perform this command'
+    echo "use 'sudo sparry', 'sudo -s' or run sparry as root user."
     exit 1
 }
 
 error_no_internet_connection() {
-    echo 'webot: access to the internet is required.'
+    echo 'sparry: access to the internet is required.'
     exit 1
 }
 
@@ -163,7 +160,7 @@ error_user_validation_failed() {
 #}
 
 requirement_root() {
-    # show error when webot has no root privileges
+    # show error when sparry has no root privileges
     if [ "$(id -u)" -ne 0 ]; then
         error_no_root_privileges
     fi
@@ -203,17 +200,17 @@ requirement_internet() {
 # MANAGEMENT FUNCTIONS
 #############################################################################
 
-webot_version() {
-    echo "webot ${WEBOT_VERSION}"
+sparry_version() {
+    echo "sparry ${SPARRY_VERSION}"
     echo "Copyright (C) 2019-2020 Nozel."
     echo "License CC Attribution-NonCommercial-ShareAlike 4.0 Int."
     echo
     echo "Written by Sebas Veeke"
 }
 
-webot_help() {
+sparry_help() {
     echo "Usage:"
-    echo " webot [option]..."
+    echo " sparry [option]..."
     echo
     echo "Features:"
     echo " -a, --add-webconfig    Start guided creation of new apache configuration"
@@ -240,11 +237,11 @@ feature_add_webconfig() {
     # - whether apache should be restarted afterwards
 
     echo
-    echo 'webot will guide you through the creation of a new apache'
+    echo 'sparry will guide you through the creation of a new apache'
     echo 'configuration file now. Please answer the following questions:'
     echo
     # ask whether DNS has been configured already and validate input
-    # this question is meant to make clear to the user that DNS should really be configured before using webot
+    # this question is meant to make clear to the user that DNS should really be configured before using sparry
     while true
         do
             read -r -p '(1) Did you configure and propagate relevant DNS records? [yes/no]: ' DNS_RECORDS
@@ -257,8 +254,8 @@ feature_add_webconfig() {
         error_dns_required
     fi
     # ask for the domain name and validate input by checking if the given domain is usable
-    # note that webot does not check whether the DNS A and AAAA records are indeed pointing
-    # to the device webot is executed from
+    # note that sparry does not check whether the DNS A and AAAA records are indeed pointing
+    # to the device sparry is executed from
     while true
         do
             read -r -p '(2) Enter domain name (e.g. domain.tld): ' DOMAIN_NAME
@@ -364,7 +361,7 @@ feature_add_webconfig() {
         echo "    # ServerName:         ${DOMAIN_NAME}"
         echo "    # ServerAlias         www.${DOMAIN_NAME}"
     fi
-    echo "    # DocumentRoot:       ${DOCUMENTROOT_PATH}"
+    echo "    # DocumentRoot:       ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"
     if [ "${CHOICE_TLS}" = '1' ]; then
         echo '    # TLS Certificate:    RSA 2048'
     elif [ "${CHOICE_TLS}" = '2' ]; then
@@ -444,7 +441,7 @@ feature_add_webconfig() {
     chown root:wheel ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
     chmod 644 ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
     echo "Adding VirtualHost for http requests to ${DOMAIN_NAME}.conf"
-    echo "# apache configuration file generated by webot" > ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+    echo "# apache configuration file generated by sparry" > ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
     echo '<VirtualHost *:80>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
     if [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
         echo "    ServerName ${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
@@ -607,7 +604,7 @@ feature_add_webconfig() {
 # MAIN FUNCTION
 #############################################################################
 
-webot_main() {
+sparry_main() {
     # check if os is supported
     requirement_os
 
@@ -616,9 +613,9 @@ webot_main() {
 
     # call relevant functions based on arguments
     if [ "${ARGUMENT_VERSION}" = '1' ]; then
-        webot_version
+        sparry_version
     elif [ "${ARGUMENT_HELP}" = '1' ]; then
-        webot_help
+        sparry_help
     elif [ "${ARGUMENT_ADD_WEBCONFIG}" = '1' ]; then
         requirement_root
         requirement_os
@@ -635,4 +632,4 @@ webot_main() {
 # CALL MAIN FUNCTION
 #############################################################################
 
-webot_main
+sparry_main
