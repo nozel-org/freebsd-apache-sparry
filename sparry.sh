@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #############################################################################
-# Version 0.1.0-UNSTABLE (01-03-2020)
+# Version 0.1.0-UNSTABLE (04-03-2020)
 #############################################################################
 
 #############################################################################
@@ -26,12 +26,14 @@ SPARRY_VERSION='0.1.0'
 APACHE_CONFDIR='/usr/local/etc/apache24/Includes'
 DEFAULT_DOCUMENTROOT='/usr/local/www'
 
-# populate used variables
+# zero out used variables
 DNS_RECORDS='0'
 DOMAIN_NAME='0'
 CHOICE_SUBDOMAIN='0'
+DOCUMENTROOT_PATH='0'
 CHOICE_TLS='0'
 CHOICE_SECURITY_HEADERS='0'
+CHOICE_LOGGING='0'
 CHOICE_RESTART_APACHE='0'
 
 # LIMITATIONS
@@ -237,7 +239,7 @@ feature_add_webconfig() {
     # - whether apache should be restarted afterwards
 
     echo
-    echo 'sparry will guide you through the creation of a new apache'
+    echo 'Sparry will guide you through the creation of a new apache'
     echo 'configuration file now. Please answer the following questions:'
     echo
     # ask whether DNS has been configured already and validate input
@@ -282,7 +284,7 @@ feature_add_webconfig() {
     read -r -p '    : ' DOCUMENTROOT_PATH
     if [ -z "${DOCUMENTROOT_PATH}" ]; then
         DOCUMENTROOT_PATH="${DEFAULT_DOCUMENTROOT}"
-        echo "    path ${DOCUMENTROOT_PATH} will be used"
+        echo "    default path ${DOCUMENTROOT_PATH} will be used"
     fi
     # ask whether user wants a tls certificate and validate input
     echo '(5) Add TLS certificate?'
