@@ -32,6 +32,7 @@ DOMAIN_NAME='0'
 CHOICE_SUBDOMAIN='0'
 DOCUMENTROOT_PATH='0'
 CHOICE_TLS='0'
+EMAIL_ADDRESS='0'
 CHOICE_SECURITY_HEADERS='0'
 CHOICE_LOGGING='0'
 CHOICE_RESTART_APACHE='0'
@@ -50,6 +51,9 @@ CHOICE_RESTART_APACHE='0'
 # - Fix problem with amount of argument validation (it's broken)
 # X Add default apache config directory
 # X Add error/access logging option
+# - Add output with directory locations for new config file and possibly other useful stuff
+# - Add more default so users can just press enter
+# - Add exit on error for certbot certificate request stuff
 
 #############################################################################
 # ARGUMENTS
@@ -127,26 +131,26 @@ error_no_internet_connection() {
 
 # feature errors
 error_type_yes_or_no() {
-    echo '    error: type yes or no and press enter to continue.'
+    echo '     error: type yes or no and press enter to continue.'
 }
 
 error_type_valid_number() {
-    echo '    error: type a valid number and press enter to continue.'
+    echo '     error: type a valid number and press enter to continue.'
 }
 
 error_dns_required() {
-    echo '    error: propagated DNS required, please configure DNS first.'
+    echo '     error: propagated DNS required, please configure DNS first.'
     exit 1
 }
 
 error_invalid_domain() {
-    echo '    error: invalid domain: add a valid domain. a valid domain:'
-    echo '      - consists of domain.tld or subdomain.domain.tld.'
-    echo '      - can be reached from this server (nameservers and records).'
+    echo '     error: invalid domain: add a valid domain. a valid domain:'
+    echo '       - consists of domain.tld or subdomain.domain.tld.'
+    echo '       - can be reached from this server (nameservers and records).'
 }
 
 error_user_validation_failed() {
-    echo '    Too bad, but you can always try again. Bye.'
+    echo '     Too bad, but you can always try again. Bye.'
     exit 0
 }
 
@@ -237,6 +241,7 @@ feature_add_webconfig() {
     # - whether HTTP security headers should be installed
     # - what type of logging should be used
     # - whether apache should be restarted afterwards
+    # - add db file with previous sparry based configs for complete management?
 
     echo
     echo 'Sparry will guide you through the creation of a new apache'
@@ -246,7 +251,7 @@ feature_add_webconfig() {
     # this question is meant to make clear to the user that DNS should really be configured before using sparry
     while true
         do
-            read -r -p '(1) Did you configure and propagate relevant DNS records? [yes/no]: ' DNS_RECORDS
+            read -r -p '(1)  Did you configure and propagate relevant DNS records? [yes/no]: ' DNS_RECORDS
             [ "${DNS_RECORDS}" = 'yes' ] || [ "${DNS_RECORDS}" = 'y' ] || \
             [ "${DNS_RECORDS}" = 'no' ] || [ "${DNS_RECORDS}" = 'n' ] && break
             error_type_yes_or_no
@@ -260,84 +265,86 @@ feature_add_webconfig() {
     # to the device sparry is executed from
     while true
         do
-            read -r -p '(2) Enter domain name (e.g. domain.tld): ' DOMAIN_NAME
-            echo "    Performing DNS lookup for ${DOMAIN_NAME}"
+            read -r -p '(2)  Enter domain name (e.g. domain.tld): ' DOMAIN_NAME
+            echo "     Performing DNS lookup for ${DOMAIN_NAME}"
             host "${DOMAIN_NAME}" 2>&1 > /dev/null
             [ "$?" -eq '0' ] && break
                 error_invalid_domain
         done
-    echo "    Domain ${DOMAIN_NAME} OK"
+    echo "     Domain ${DOMAIN_NAME} OK"
     # ask for (sub)domain layout and validate input
-    echo '(3) Select (sub)domain layout:'
-    echo "    1 ${DOMAIN_NAME}"
-    echo "    2 www.${DOMAIN_NAME}"
-    echo "    3 ${DOMAIN_NAME} and www.${DOMAIN_NAME}"
+    echo '(3)  Select (sub)domain layout:'
+    echo "     1 ${DOMAIN_NAME}"
+    echo "     2 www.${DOMAIN_NAME}"
+    echo "     3 ${DOMAIN_NAME} and www.${DOMAIN_NAME}"
     while true
         do
-            read -r -p '    (1-3): ' CHOICE_SUBDOMAIN
+            read -r -p '     [1-3]: ' CHOICE_SUBDOMAIN
             [ "${CHOICE_SUBDOMAIN}" = '1' ] || [ "${CHOICE_SUBDOMAIN}" = '2' ] || \
             [ "${CHOICE_SUBDOMAIN}" = '3' ] && break
             error_type_valid_number
         done
     # ask for DocumentRoot and if empty variable, populate with $DEFAULT_DOCUMENTROOT
-    echo '(4) DocumentRoot (full path or empty for FreeBSD default):'
-    read -r -p '    : ' DOCUMENTROOT_PATH
+    echo '(4)  DocumentRoot (full path or empty for FreeBSD default):'
+    read -r -p '     : ' DOCUMENTROOT_PATH
     if [ -z "${DOCUMENTROOT_PATH}" ]; then
         DOCUMENTROOT_PATH="${DEFAULT_DOCUMENTROOT}"
-        echo "    default path ${DOCUMENTROOT_PATH} will be used"
+        echo "     default path ${DOCUMENTROOT_PATH} will be used"
     fi
     # ask whether user wants a tls certificate and validate input
-    echo '(5) Add TLS certificate?'
-    echo '    1 TLS certificate with RSA key size of 2048 bits (default)'
-    echo '    2 TLS certificate with RSA key size of 4096 bits (paranoid)'
-    echo '    3 No TLS certificate (not recommended)'
+    echo '(5)  Add TLS certificate?'
+    echo '     1 TLS certificate with RSA key size of 2048 bits (default)'
+    echo '     2 TLS certificate with RSA key size of 4096 bits (paranoid)'
+    echo '     3 No TLS certificate (not recommended)'
     while true
         do
-            read -r -p '    [1-3]: ' CHOICE_TLS
+            read -r -p '     [1-3]: ' CHOICE_TLS
             [ "${CHOICE_TLS}" = '1' ] || [ "${CHOICE_TLS}" = '2' ] || \
             [ "${CHOICE_TLS}" = '3' ] && break
             error_type_valid_number
         done
-    # ask for security headers configuration and validate input based on TLS choice
-    # because the more strict security headers won't be compatible with http-only traffic
+    # ask for Let's Encrypt email address and security headers configuration and validate
+    # input based on TLS choice because the more strict security headers won't be compatible 
+    # with http-only traffic
     if [ "${CHOICE_TLS}" = '1' ] || [ "${CHOICE_TLS}" = '2' ]; then
-        echo '(6) Add HTTP security headers?'
-        echo '    1 Strict    [enforce HTTPS] [disable: ext-resource, inline-css, iframes]'
-        echo '    2 Loose     [enforce HTTPS] [disable: ext-resource, iframes] [enable: inline-css]'
-        echo '    3 Poor      [enforce HTTPS] [enable: ext-resource, inline-css, iframes]'
-        echo '    4 Weak      [allow HTTP]    [enable: ext-resource, inline-css, iframes]'
-        echo '    5 None      [disable: HTTP security headers]'
+        read -r -p "(6)  Enter Let's Encrypt email address: " EMAIL_ADDRESS
+        echo '(7)  Add HTTP security headers?'
+        echo '     1 Strict    [enforce: HTTPS] [disable: ext-resource, inline-css, iframes]'
+        echo '     2 Loose     [enforce: HTTPS] [disable: ext-resource, iframes] [enable: inline-css]'
+        echo '     3 Poor      [enforce: HTTPS] [enable: ext-resource, inline-css, iframes]'
+        echo '     4 Weak      [allow: HTTP]    [enable: ext-resource, inline-css, iframes]'
+        echo '     5 None      [disable: HTTP security headers]'
         while true
             do
-                read -r -p '    [1-5]: ' CHOICE_SECURITY_HEADERS
+                read -r -p '     [1-5]: ' CHOICE_SECURITY_HEADERS
                 [ "${CHOICE_SECURITY_HEADERS}" = '1' ] || [ "${CHOICE_SECURITY_HEADERS}" = '2' ] || \
                 [ "${CHOICE_SECURITY_HEADERS}" = '3' ] || [ "${CHOICE_SECURITY_HEADERS}" = '4' ] || \
                 [ "${CHOICE_SECURITY_HEADERS}" = '5' ] && break
                 error_type_valid_number
             done
     else
-        echo '(6) Add HTTP security headers?'
-        echo '    x Strict    [NOT AVAILABLE WITHOUT TLS]'
-        echo '    x Loose     [NOT AVAILABLE WITHOUT TLS]'
-        echo '    x Poor      [NOT AVAILABLE WITHOUT TLS]'
-        echo '    4 Weak      [allow HTTP]    [enable ext-resource, inline-css, iframes]'
-        echo '    5 None      [disable HTTP security headers]'
+        echo '(7)  Add HTTP security headers?'
+        echo '     x Strict    [NOT AVAILABLE WITHOUT TLS]'
+        echo '     x Loose     [NOT AVAILABLE WITHOUT TLS]'
+        echo '     x Poor      [NOT AVAILABLE WITHOUT TLS]'
+        echo '     4 Weak      [allow: HTTP]    [enable: ext-resource, inline-css, iframes]'
+        echo '     5 None      [disable: HTTP security headers]'
         while true
             do
-                read -r -p '    [4-5]: ' CHOICE_SECURITY_HEADERS
+                read -r -p '     [4-5]: ' CHOICE_SECURITY_HEADERS
                 [ "${CHOICE_SECURITY_HEADERS}" = '4' ] || [ "${CHOICE_SECURITY_HEADERS}" = '5' ] && break
                 error_type_valid_number
             done
     fi
     # ask what logging configuration should be used
-    echo '(7) Add logging?'
-    echo '    1 Error logging'
-    echo '    2 Access logging'
-    echo '    3 Error and access logging'
-    echo '    4 No logging'
+    echo '(8)  Add logging?'
+    echo '     1 Error logging'
+    echo '     2 Access logging'
+    echo '     3 Error and access logging'
+    echo '     4 No logging'
     while true
         do
-            read -r -p '    [1-4]: ' CHOICE_LOGGING
+            read -r -p '     [1-4]: ' CHOICE_LOGGING
             [ "${CHOICE_SECURITY_HEADERS}" = '1' ] || [ "${CHOICE_SECURITY_HEADERS}" = '2' ] || \
             [ "${CHOICE_SECURITY_HEADERS}" = '3' ] || [ "${CHOICE_SECURITY_HEADERS}" = '4' ] && break
             error_type_valid_number
@@ -345,7 +352,7 @@ feature_add_webconfig() {
     # ask whether apache should be restarted after the new web configuration has been created and validate input
     while true
         do
-            read -r -p '(8) Restart apache after creation? [yes/no]: ' CHOICE_RESTART_APACHE
+            read -r -p '(9)  Restart apache after creation? [yes/no]: ' CHOICE_RESTART_APACHE
             [ "${CHOICE_RESTART_APACHE}" = 'yes' ] || [ "${CHOICE_RESTART_APACHE}" = 'y' ] || \
             [ "${CHOICE_RESTART_APACHE}" = 'no' ] || [ "${CHOICE_RESTART_APACHE}" = 'n' ] && break
             error_type_yes_or_no
@@ -353,90 +360,122 @@ feature_add_webconfig() {
 
     ### 2 VALIDATE USER INPUT
     # show user all given answers and validate user input one last time
-    echo '(9) Does the following configuration look reasonable?'
-    echo '    ############################################################################'
+    echo '(10) Does the following configuration look reasonable?'
+    echo '     ############################################################################'
     if [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
-        echo "    # ServerName:         ${DOMAIN_NAME}"
+        echo "     # ServerName:         ${DOMAIN_NAME}"
     elif [ "${CHOICE_SUBDOMAIN}" = '2' ]; then
-        echo "    # ServerName:         www.${DOMAIN_NAME}"
+        echo "     # ServerName:         www.${DOMAIN_NAME}"
     elif [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
-        echo "    # ServerName:         ${DOMAIN_NAME}"
-        echo "    # ServerAlias         www.${DOMAIN_NAME}"
+        echo "     # ServerName:         ${DOMAIN_NAME}"
+        echo "     # ServerAlias         www.${DOMAIN_NAME}"
     fi
-    echo "    # DocumentRoot:       ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"
+    echo "     # DocumentRoot:       ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"
     if [ "${CHOICE_TLS}" = '1' ]; then
-        echo '    # TLS Certificate:    RSA 2048'
+        echo '     # TLS certificate:    RSA 2048'
+        echo "     # TLS email address:  ${EMAIL_ADDRESS}"
     elif [ "${CHOICE_TLS}" = '2' ]; then
-        echo '    # TLS Certificate:    RSA 4096'
+        echo '     # TLS certificate:    RSA 4096'
+        echo "     # TLS email address:  ${EMAIL_ADDRESS}"
     elif [ "${CHOICE_TLS}" = '3' ]; then
-        echo '    # TLS Certificate:    None'
+        echo '     # TLS certificate:    None'
     fi
     if [ "${CHOICE_SECURITY_HEADERS}" = '1' ]; then
-        echo '    # Security headers:'
-        echo '    #   Strict-Transport-Security: max-age=31536000; includeSubDomains;'
-        echo '    #   X-Frame-Options "DENY"'
-        echo '    #   X-XSS-Protection: "1; mode=block"'
-        echo '    #   X-Content-Type-Options "nosniff"'
-        echo '    #   X-Permitted-Cross-Domain-Policies: none'
-        echo '    #   Referrer-Policy same-origin'
-        echo "    #   Content-Security-Policy: default-src https://${DOMAIN_NAME}"
+        echo '     # Security headers:'
+        echo '     #   Strict-Transport-Security: max-age=31536000; includeSubDomains;'
+        echo '     #   X-Frame-Options "DENY"'
+        echo '     #   X-XSS-Protection: "1; mode=block"'
+        echo '     #   X-Content-Type-Options "nosniff"'
+        echo '     #   X-Permitted-Cross-Domain-Policies: none'
+        echo '     #   Referrer-Policy same-origin'
+        echo "     #   Content-Security-Policy: default-src https://${DOMAIN_NAME}"
     elif [ "${CHOICE_SECURITY_HEADERS}" = '2' ]; then
-        echo '    # Security headers:'
-        echo '    #   Strict-Transport-Security: max-age=31536000; includeSubDomains;'
-        echo '    #   X-Frame-Options "DENY"'
-        echo '    #   X-XSS-Protection: "1; mode=block"'
-        echo '    #   X-Content-Type-Options "nosniff"'
-        echo '    #   X-Permitted-Cross-Domain-Policies: none'
-        echo '    #   Referrer-Policy same-origin'
-        echo "    #   Content-Security-Policy: default-src https://${DOMAIN_NAME}; style-src 'unsafe-inline'"
+        echo '     # Security headers:'
+        echo '     #   Strict-Transport-Security: max-age=31536000; includeSubDomains;'
+        echo '     #   X-Frame-Options "DENY"'
+        echo '     #   X-XSS-Protection: "1; mode=block"'
+        echo '     #   X-Content-Type-Options "nosniff"'
+        echo '     #   X-Permitted-Cross-Domain-Policies: none'
+        echo '     #   Referrer-Policy same-origin'
+        echo "     #   Content-Security-Policy: default-src https://${DOMAIN_NAME}; style-src 'unsafe-inline'"
     elif [ "${CHOICE_SECURITY_HEADERS}" = '3' ]; then
-        echo '    # Security headers:'
-        echo '    #   Strict-Transport-Security: max-age=31536000; includeSubDomains;'
-        echo '    #   X-Frame-Options "SAMEORIGIN"'
-        echo '    #   X-XSS-Protection: "1; mode=block"'
-        echo '    #   X-Content-Type-Options "nosniff"'
-        echo '    #   X-Permitted-Cross-Domain-Policies: none'
-        echo '    #   Referrer-Policy same-origin'
-        echo "    #   Content-Security-Policy: default-src https:; style-src 'unsafe-inline'"
+        echo '     # Security headers:'
+        echo '     #   Strict-Transport-Security: max-age=31536000; includeSubDomains;'
+        echo '     #   X-Frame-Options "SAMEORIGIN"'
+        echo '     #   X-XSS-Protection: "1; mode=block"'
+        echo '     #   X-Content-Type-Options "nosniff"'
+        echo '     #   X-Permitted-Cross-Domain-Policies: none'
+        echo '     #   Referrer-Policy same-origin'
+        echo "     #   Content-Security-Policy: default-src https:; style-src 'unsafe-inline'"
     elif [ "${CHOICE_SECURITY_HEADERS}" = '4' ]; then
-        echo '    # Security headers:'
-        echo '    #   X-Frame-Options "SAMEORIGIN"'
-        echo '    #   X-XSS-Protection: "1; mode=block"'
-        echo '    #   X-Content-Type-Options "nosniff"'
-        echo '    #   X-Permitted-Cross-Domain-Policies: none'
-        echo '    #   Referrer-Policy same-origin'
+        echo '     # Security headers:'
+        echo '     #   X-Frame-Options "SAMEORIGIN"'
+        echo '     #   X-XSS-Protection: "1; mode=block"'
+        echo '     #   X-Content-Type-Options "nosniff"'
+        echo '     #   X-Permitted-Cross-Domain-Policies: none'
+        echo '     #   Referrer-Policy same-origin'
     elif [ "${CHOICE_SECURITY_HEADERS}" = '5' ]; then
-        echo '    # Security headers:   Disabled'
+        echo '     # Security headers:   Disabled'
     fi
     if [ "${CHOICE_LOGGING}" = '1' ]; then
-        echo '    # Logging:            Error logging'
+        echo '     # Logging:            Error logging'
     elif [ "${CHOICE_LOGGING}" = '2' ]; then
-        echo '    # Logging:            Access logging'
+        echo '     # Logging:            Access logging'
     elif [ "${CHOICE_LOGGING}" = '3' ]; then
-        echo '    # Logging:            Error and access logging'
+        echo '     # Logging:            Error and access logging'
     elif [ "${CHOICE_LOGGING}" = '4' ]; then
-        echo '    # Logging:            Disabled'
+        echo '     # Logging:            Disabled'
     fi
     if [ "${CHOICE_RESTART_APACHE}" = 'yes' ]; then
-        echo "    # Restart Apache:     Yes"
+        echo "     # Restart Apache:     Yes"
     elif [ "${CHOICE_RESTART_APACHE}" = 'no' ]; then
-        echo "    # Restart Apache:     No"
+        echo "     # Restart Apache:     No"
     fi
-    echo '    ############################################################################'
+    echo '     ############################################################################'
     while true
         do
-            read -r -p '    (yes/no): ' USER_VALIDATION
+            read -r -p '     (yes/no): ' USER_VALIDATION
             [ "${USER_VALIDATION}" = 'yes' ] || [ "${USER_VALIDATION}" = 'y' ] || \
             [ "${USER_VALIDATION}" = 'no' ] || [ "${USER_VALIDATION}" = 'n' ] && break
             error_type_yes_or_no
         done
-
-    ### 3 EFFECTUATE USER CHOICES
-    # ...
     # stop script if user validation didn't succeed
     if [ "${USER_VALIDATION}" = 'no' ] || [ "${USER_VALIDATION}" = 'n' ]; then
         error_user_validation_failed
     fi
+
+    ### 3 EFFECTUATE USER CHOICES
+    # request certificate if user chose to use a TLS certificate
+    # explanation of certbot arguments:
+    # 'certonly' let us retrieve only a certificate, since Sparry will take care of putting it in the vhost
+    ### 'standalone'
+    # 'quiet' is used to suppress certbot output
+    # 'non-interactive' makes certbot somewhat non-interactive
+    # 'agree-tos' accepts the certbot terms of service without user interaction
+    # 'email' adds the earlier given email address, also to limit user interaction
+    # 'certname' makes sure our certificate always have the name of the domain
+    # 'rsa-key-size' let us choose the rsa key size (in this case either 2048 or 4096 bit)
+    # 'domain' is pretty self-explanatory
+    echo
+    if [ "${CHOICE_TLS}" = '1' ] || [ "${CHOICE_TLS}" = '2' ]; then
+        echo 'Requesting TLS certificate'
+        # request TLS certificate through certbot based on chosen key size and (sub)domain layout
+        if [ "${CHOICE_TLS}" = '1' ] && [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
+            certbot certonly --standalone --dry-run --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 2048 --domain ${DOMAIN_NAME}
+        elif [ "${CHOICE_TLS}" = '1' ] && [ "${CHOICE_SUBDOMAIN}" = '2' ]; then
+            certbot certonly --standalone --dry-run --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 2048 --domain www.${DOMAIN_NAME}
+        elif [ "${CHOICE_TLS}" = '1' ] && [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
+            certbot certonly --standalone --dry-run --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 2048 --domain ${DOMAIN_NAME} --domain www.${DOMAIN_NAME}
+        elif [ "${CHOICE_TLS}" = '2' ] && [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
+            certbot certonly --standalone --dry-run --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 4096 --domain ${DOMAIN_NAME}
+        elif [ "${CHOICE_TLS}" = '2' ] && [ "${CHOICE_SUBDOMAIN}" = '2' ]; then
+            certbot certonly --standalone --dry-run --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 4096 --domain www.${DOMAIN_NAME}
+        elif [ "${CHOICE_TLS}" = '2' ] && [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
+            certbot certonly --standalone --dry-run --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 4096 --domain ${DOMAIN_NAME} --domain www.${DOMAIN_NAME}
+        fi
+        echo 'Certificate received'
+    fi
+    # create VirtualHost configuration file based on choices
     echo "Creating ${DOMAIN_NAME}.conf in ${APACHE_CONFDIR}"
     touch ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
     echo "Setting ownership and permissions on ${DOMAIN_NAME}.conf"
@@ -453,7 +492,12 @@ feature_add_webconfig() {
         echo "    ServerName ${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         echo "    ServerAlias www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
     fi
-        echo "    DocumentRoot ${DOCUMENTROOT_PATH}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+    echo "    DocumentRoot ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+    echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+    echo '    # Apache directory control access' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+    echo '    <Directory "'"${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"'">' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+    echo '        Require all granted' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+    echo '    </Directory>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
     if [ "${CHOICE_LOGGING}" = '1' ]; then
         echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         echo '    # Logging' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
@@ -505,19 +549,12 @@ feature_add_webconfig() {
     elif [ "${CHOICE_SECURITY_HEADERS}" = '3' ]; then
         echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set Strict-Transport-Security: max-age=31536000; includeSubDomains;' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         echo '    Header always set X-Frame-Options "SAMEORIGIN"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         echo "    Header always set Content-Security-Policy: default-src https:; style-src 'unsafe-inline'" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # Rewrite requests to HTTPS' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    RewriteEngine on' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    RewriteCond %{SERVER_NAME} =${DOMAIN_NAME} [OR]" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    RewriteCond %{SERVER_NAME} =www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    RewriteRule ^ https://%{SERVER_NAME}%{REQUEST_URI} [END,QSA,R=permanent]' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
     elif [ "${CHOICE_SECURITY_HEADERS}" = '4' ]; then
         echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
@@ -528,7 +565,9 @@ feature_add_webconfig() {
         echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
     fi
     echo '</VirtualHost>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+
     if [ "${CHOICE_TLS}" = '1' ] || [ "${CHOICE_TLS}" = '2' ]; then
+        # add VirtualHost for https requests
         echo "Adding VirtualHost for https requests to ${DOMAIN_NAME}.conf"
         echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         echo '<IfModule mod_ssl.c>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
@@ -541,7 +580,12 @@ feature_add_webconfig() {
             echo "    ServerName ${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
             echo "    ServerAlias www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         fi
-            echo "    DocumentRoot ${DOCUMENTROOT_PATH}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+        echo "    DocumentRoot ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+        echo '    # Apache directory control access' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+        echo '    <Directory "'"${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"'">' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+        echo '        Require all granted' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+        echo '    </Directory>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         if [ "${CHOICE_LOGGING}" = '1' ]; then
             echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
             echo '    # Logging' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
@@ -580,8 +624,6 @@ feature_add_webconfig() {
             echo "    Header always set Content-Security-Policy: default-src https://${DOMAIN_NAME}; style-src 'unsafe-inline'" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         elif [ "${CHOICE_SECURITY_HEADERS}" = '3' ]; then
             echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set Strict-Transport-Security: max-age=31536000; includeSubDomains;' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
             echo '    Header always set X-Frame-Options "SAMEORIGIN"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
             echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
             echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf

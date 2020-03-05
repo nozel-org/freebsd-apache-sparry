@@ -133,4 +133,4 @@ The example below uses the 'strict' HTTP Security Headers profile.
 ```
 
 ## Support
-If you have questions about Sparry, have suggestions or find bugs, please let us know via the issue tracker.
+If you have questions/suggestions about Sparry or find bugs, please let us know via the issue tracker.
