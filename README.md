@@ -13,7 +13,7 @@ Sparry is a acronym for "SPawn Apache viRtualhosts eveRYwhere" (sorry, couldn't 
 ## How does it work
 Sparry asks some questions and will generate a VirtualHost file and configure apache based on the answers given. Nothing too special. There is one VirtualHost configuration file for every domain (with or without the www. subdomain and for both http and https).
 
-## Shortcomings
+## Limitations
 Sparry is really meant for basic tasks and is not for you if you require stuff like other subdomains than `www`, multiple domains in one file or the more complex Apache stuff.
 
 ## Examples

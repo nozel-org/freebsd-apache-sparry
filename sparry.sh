@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #############################################################################
-# Version 0.1.0-UNSTABLE (04-03-2020)
+# Version 0.1.0-UNSTABLE (07-03-2020)
 #############################################################################
 
 #############################################################################
@@ -37,23 +37,13 @@ CHOICE_SECURITY_HEADERS='0'
 CHOICE_LOGGING='0'
 CHOICE_RESTART_APACHE='0'
 
-# LIMITATIONS
-# It's only compatible with default packages/ports and default apache directories and stuff
-# - only basic stuff is possible, so for example only 1 domain (with www as subdomain) per config file/cert.
-
-# NOTES
-# - makes config per domain
-# - doesn't harden base apache or base lets encrypt configuration
-
-# FUTURE/TO-DO
-# - maybe add auto harden feature? (apache, TLS/certbot etc.)
-# - Add option for self-signed cert?
+# TO-DO
 # - Fix problem with amount of argument validation (it's broken)
-# X Add default apache config directory
-# X Add error/access logging option
 # - Add output with directory locations for new config file and possibly other useful stuff
-# - Add more default so users can just press enter
 # - Add exit on error for certbot certificate request stuff
+# - Generieker maken van foutmeldingen, bijv. door 'Error $app_name is not found'.
+# - Better names for functions. add-webconfig should be spawn (theme-wise)?
+# - Create www domain folder automatically if it doesn't already exist
 
 #############################################################################
 # ARGUMENTS
@@ -72,7 +62,7 @@ while test -n "$1"; do
             shift
             ;;
         # features
-        --add-webconfig|-a)
+        --spawn|--add-webconfig|-a|-s)
             ARGUMENT_ADD_WEBCONFIG='1'
             shift
             ;;
@@ -116,6 +106,13 @@ error_apache_not_installed() {
 error_certbot_not_installed() {
     echo 'sparry: certbot not installed'
     echo "use 'pkg install py37-certbot py37-certbot-apache' or install certbot from ports."
+    exit 1
+}
+
+error_curl_not_installed() {
+    echo 'sparry: curl not installed'
+    echo "use 'pkg install curl' or install curl from ports."
+    exit 1
 }
 
 error_no_root_privileges() {
@@ -187,9 +184,16 @@ requirement_apache() {
 }
 
 requirement_certbot() {
-    # show error when apachectl cannot be found (which probably means the user has not installed apache)
+    # show error when apachectl cannot be found (which probably means the user has not installed certbot)
     if [ ! "$(command -v certbot)" ]; then
         error_apache_not_installed
+    fi
+}
+
+requirement_curl() {
+    # show error when curl cannot be found (which probably means the user has not installed curl)
+    if [ ! "$(command -v curl)" ]; then
+        error_curl_not_installed
     fi
 }
 
@@ -219,12 +223,33 @@ sparry_help() {
     echo " sparry [option]..."
     echo
     echo "Features:"
-    echo " -a, --add-webconfig    Start guided creation of new apache configuration"
+    echo " -s, --spawn          Start guided creation of new apache vhost configuration"
     echo
     echo "Options:"
-    echo " -h, --help             Display this help and exit"
-    echo " -v, --version          Display version information and exit"
+    echo " -h, --help           Display this help and exit"
+    echo " -v, --version        Display version information and exit"
 }
+
+#############################################################################
+# SUPPORT FUNCTIONS
+#############################################################################
+
+validate_dns_records() {
+    # Sparry simply compares the default external IPv4 address with the
+    # DNS A record of the domain(s) chosen.
+    if [ "$(host -4 -t A $1 | awk '{print $4}')" = "${EXTERNAL_IP_ADDRESS}" ]; then
+        echo "     > Domain $1 has been configured correctly"
+    else
+        echo
+        echo "error: DNS is not configured correctly or is not yet propagated."
+        echo "Add 'A  $1  ${EXTERNAL_IP_ADDRESS}' to DNS configuration or wait for the propagation."
+        exit 1
+    fi
+}
+
+#############################################################################
+# FEATURE FUNCTIONS
+#############################################################################
 
 feature_add_webconfig() {
     # this function consists of three parts:
@@ -261,17 +286,15 @@ feature_add_webconfig() {
         error_dns_required
     fi
     # ask for the domain name and validate input by checking if the given domain is usable
-    # note that sparry does not check whether the DNS A and AAAA records are indeed pointing
-    # to the device sparry is executed from
     while true
         do
             read -r -p '(2)  Enter domain name (e.g. domain.tld): ' DOMAIN_NAME
-            echo "     Performing DNS lookup for ${DOMAIN_NAME}"
+            echo "     > Performing DNS lookup for ${DOMAIN_NAME}"
             host "${DOMAIN_NAME}" 2>&1 > /dev/null
             [ "$?" -eq '0' ] && break
                 error_invalid_domain
         done
-    echo "     Domain ${DOMAIN_NAME} OK"
+    echo "     > Domain ${DOMAIN_NAME} OK"
     # ask for (sub)domain layout and validate input
     echo '(3)  Select (sub)domain layout:'
     echo "     1 ${DOMAIN_NAME}"
@@ -284,6 +307,19 @@ feature_add_webconfig() {
             [ "${CHOICE_SUBDOMAIN}" = '3' ] && break
             error_type_valid_number
         done
+    # check whether DNS records have been properly set
+    echo '     > Performing external IP address lookup'
+    EXTERNAL_IP_ADDRESS="$(curl --silent ipecho.net/plain)"
+    echo "     > External IP address is ${EXTERNAL_IP_ADDRESS}"
+    echo '     > Checking if DNS records have been set correctly'
+    if [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
+        validate_dns_records "${DOMAIN_NAME}"
+    elif [ "${CHOICE_SUBDOMAIN}" = '2' ]; then
+        validate_dns_records "www.${DOMAIN_NAME}"
+    elif [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
+        validate_dns_records "${DOMAIN_NAME}"
+        validate_dns_records "www.${DOMAIN_NAME}"
+    fi
     # ask for DocumentRoot and if empty variable, populate with $DEFAULT_DOCUMENTROOT
     echo '(4)  DocumentRoot (full path or empty for FreeBSD default):'
     read -r -p '     : ' DOCUMENTROOT_PATH
@@ -345,8 +381,8 @@ feature_add_webconfig() {
     while true
         do
             read -r -p '     [1-4]: ' CHOICE_LOGGING
-            [ "${CHOICE_SECURITY_HEADERS}" = '1' ] || [ "${CHOICE_SECURITY_HEADERS}" = '2' ] || \
-            [ "${CHOICE_SECURITY_HEADERS}" = '3' ] || [ "${CHOICE_SECURITY_HEADERS}" = '4' ] && break
+            [ "${CHOICE_LOGGING}" = '1' ] || [ "${CHOICE_LOGGING}" = '2' ] || \
+            [ "${CHOICE_LOGGING}" = '3' ] || [ "${CHOICE_LOGGING}" = '4' ] && break
             error_type_valid_number
         done
     # ask whether apache should be restarted after the new web configuration has been created and validate input
@@ -364,13 +400,15 @@ feature_add_webconfig() {
     echo '     ############################################################################'
     if [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
         echo "     # ServerName:         ${DOMAIN_NAME}"
+        echo "     # DocumentRoot:       ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"
     elif [ "${CHOICE_SUBDOMAIN}" = '2' ]; then
         echo "     # ServerName:         www.${DOMAIN_NAME}"
+        echo "     # DocumentRoot:       ${DOCUMENTROOT_PATH}/www.${DOMAIN_NAME}"
     elif [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
         echo "     # ServerName:         ${DOMAIN_NAME}"
         echo "     # ServerAlias         www.${DOMAIN_NAME}"
+        echo "     # DocumentRoot:       ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"
     fi
-    echo "     # DocumentRoot:       ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"
     if [ "${CHOICE_TLS}" = '1' ]; then
         echo '     # TLS certificate:    RSA 2048'
         echo "     # TLS email address:  ${EMAIL_ADDRESS}"
@@ -456,8 +494,8 @@ feature_add_webconfig() {
     # 'certname' makes sure our certificate always have the name of the domain
     # 'rsa-key-size' let us choose the rsa key size (in this case either 2048 or 4096 bit)
     # 'domain' is pretty self-explanatory
-    echo
     if [ "${CHOICE_TLS}" = '1' ] || [ "${CHOICE_TLS}" = '2' ]; then
+        echo
         echo 'Requesting TLS certificate'
         # request TLS certificate through certbot based on chosen key size and (sub)domain layout
         if [ "${CHOICE_TLS}" = '1' ] && [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
@@ -474,113 +512,26 @@ feature_add_webconfig() {
             certbot certonly --standalone --dry-run --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 4096 --domain ${DOMAIN_NAME} --domain www.${DOMAIN_NAME}
         fi
         echo 'Certificate received'
-    fi
-    # create VirtualHost configuration file based on choices
-    echo "Creating ${DOMAIN_NAME}.conf in ${APACHE_CONFDIR}"
-    touch ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    echo "Setting ownership and permissions on ${DOMAIN_NAME}.conf"
-    chown root:wheel ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    chmod 644 ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    echo "Adding VirtualHost for http requests to ${DOMAIN_NAME}.conf"
-    echo "# apache configuration file generated by sparry" > ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    echo '<VirtualHost *:80>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    if [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
-        echo "    ServerName ${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    elif [ "${CHOICE_SUBDOMAIN}" = '2' ]; then
-        echo "    ServerName www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    elif [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
-        echo "    ServerName ${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    ServerAlias www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    fi
-    echo "    DocumentRoot ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    echo '    # Apache directory control access' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    echo '    <Directory "'"${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"'">' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    echo '        Require all granted' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    echo '    </Directory>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    if [ "${CHOICE_LOGGING}" = '1' ]; then
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # Logging' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    ErrorLog "/var/log/httpd-'"${DOMAIN_NAME}-error.log"'"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    elif [ "${CHOICE_LOGGING}" = '2' ]; then
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # Logging' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    CustomLog "/var/log/httpd-'"${DOMAIN_NAME}-access.log"'" common' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    elif [ "${CHOICE_LOGGING}" = '3' ]; then
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # Logging' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    ErrorLog "/var/log/httpd-'"${DOMAIN_NAME}-error.log"'"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    CustomLog "/var/log/httpd-'"${DOMAIN_NAME}-access.log"'" common' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    fi
-    if [ "${CHOICE_SECURITY_HEADERS}" = '1' ]; then
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set Strict-Transport-Security: max-age=31536000; includeSubDomains;' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Frame-Options "DENY"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    Header always set Content-Security-Policy: default-src https://${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # Rewrite requests to HTTPS' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    RewriteEngine on' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    RewriteCond %{SERVER_NAME} =${DOMAIN_NAME} [OR]" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    RewriteCond %{SERVER_NAME} =www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    RewriteRule ^ https://%{SERVER_NAME}%{REQUEST_URI} [END,QSA,R=permanent]' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    elif [ "${CHOICE_SECURITY_HEADERS}" = '2' ]; then
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set Strict-Transport-Security: max-age=31536000; includeSubDomains;' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Frame-Options "DENY"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    Header always set Content-Security-Policy: default-src https://${DOMAIN_NAME}; style-src 'unsafe-inline'" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # Rewrite requests to HTTPS' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    RewriteEngine on' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    RewriteCond %{SERVER_NAME} =${DOMAIN_NAME} [OR]" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    RewriteCond %{SERVER_NAME} =www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    RewriteRule ^ https://%{SERVER_NAME}%{REQUEST_URI} [END,QSA,R=permanent]' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    elif [ "${CHOICE_SECURITY_HEADERS}" = '3' ]; then
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Frame-Options "SAMEORIGIN"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    Header always set Content-Security-Policy: default-src https:; style-src 'unsafe-inline'" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    elif [ "${CHOICE_SECURITY_HEADERS}" = '4' ]; then
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Frame-Options "SAMEORIGIN"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    fi
-    echo '</VirtualHost>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-
-    if [ "${CHOICE_TLS}" = '1' ] || [ "${CHOICE_TLS}" = '2' ]; then
-        # add VirtualHost for https requests
-        echo "Adding VirtualHost for https requests to ${DOMAIN_NAME}.conf"
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '<IfModule mod_ssl.c>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '<VirtualHost *:443>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+        # create VirtualHost configuration file based on choices
+        echo "Creating ${DOMAIN_NAME}.conf in ${APACHE_CONFDIR}"
+        touch ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+        echo "Setting ownership and permissions on ${DOMAIN_NAME}.conf"
+        chown root:wheel ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+        chmod 644 ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+        echo "Adding VirtualHost for http requests to ${DOMAIN_NAME}.conf"
+        echo "# apache configuration file generated by sparry" > ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+        echo '<VirtualHost *:80>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         if [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
             echo "    ServerName ${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo "    DocumentRoot ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         elif [ "${CHOICE_SUBDOMAIN}" = '2' ]; then
             echo "    ServerName www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo "    DocumentRoot ${DOCUMENTROOT_PATH}/www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         elif [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
             echo "    ServerName ${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
             echo "    ServerAlias www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo "    DocumentRoot ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         fi
-        echo "    DocumentRoot ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         echo '    # Apache directory control access' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         echo '    <Directory "'"${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"'">' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
@@ -611,6 +562,12 @@ feature_add_webconfig() {
             echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
             echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
             echo "    Header always set Content-Security-Policy: default-src https://${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo '    # Rewrite requests to HTTPS' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo '    RewriteEngine on' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo "    RewriteCond %{SERVER_NAME} =${DOMAIN_NAME} [OR]" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo "    RewriteCond %{SERVER_NAME} =www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo '    RewriteRule ^ https://%{SERVER_NAME}%{REQUEST_URI} [END,QSA,R=permanent]' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         elif [ "${CHOICE_SECURITY_HEADERS}" = '2' ]; then
             echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
             echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
@@ -622,8 +579,15 @@ feature_add_webconfig() {
             echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
             echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
             echo "    Header always set Content-Security-Policy: default-src https://${DOMAIN_NAME}; style-src 'unsafe-inline'" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo '    # Rewrite requests to HTTPS' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo '    RewriteEngine on' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo "    RewriteCond %{SERVER_NAME} =${DOMAIN_NAME} [OR]" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo "    RewriteCond %{SERVER_NAME} =www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo '    RewriteRule ^ https://%{SERVER_NAME}%{REQUEST_URI} [END,QSA,R=permanent]' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         elif [ "${CHOICE_SECURITY_HEADERS}" = '3' ]; then
             echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
             echo '    Header always set X-Frame-Options "SAMEORIGIN"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
             echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
             echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
@@ -640,7 +604,92 @@ feature_add_webconfig() {
             echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
         fi
         echo '</VirtualHost>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '</IfModule>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+
+        if [ "${CHOICE_TLS}" = '1' ] || [ "${CHOICE_TLS}" = '2' ]; then
+            # add VirtualHost for https requests
+            echo "Adding VirtualHost for https requests to ${DOMAIN_NAME}.conf"
+            echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo '<IfModule mod_ssl.c>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo '<VirtualHost *:443>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            if [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
+                echo "    ServerName ${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo "    DocumentRoot ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            elif [ "${CHOICE_SUBDOMAIN}" = '2' ]; then
+                echo "    ServerName www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo "    DocumentRoot ${DOCUMENTROOT_PATH}/www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            elif [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
+                echo "    ServerName ${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo "    ServerAlias www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo "    DocumentRoot ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            fi
+            echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo '    # Apache directory control access' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo '    <Directory "'"${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"'">' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo '        Require all granted' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo '    </Directory>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            if [ "${CHOICE_LOGGING}" = '1' ]; then
+                echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    # Logging' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    ErrorLog "/var/log/httpd-'"${DOMAIN_NAME}-error.log"'"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            elif [ "${CHOICE_LOGGING}" = '2' ]; then
+                echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    # Logging' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    CustomLog "/var/log/httpd-'"${DOMAIN_NAME}-access.log"'" common' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            elif [ "${CHOICE_LOGGING}" = '3' ]; then
+                echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    # Logging' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    ErrorLog "/var/log/httpd-'"${DOMAIN_NAME}-error.log"'"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    CustomLog "/var/log/httpd-'"${DOMAIN_NAME}-access.log"'" common' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            fi
+            if [ "${CHOICE_SECURITY_HEADERS}" = '1' ]; then
+                echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set Strict-Transport-Security: max-age=31536000; includeSubDomains;' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set X-Frame-Options "DENY"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo "    Header always set Content-Security-Policy: default-src https://${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            elif [ "${CHOICE_SECURITY_HEADERS}" = '2' ]; then
+                echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set Strict-Transport-Security: max-age=31536000; includeSubDomains;' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set X-Frame-Options "DENY"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo "    Header always set Content-Security-Policy: default-src https://${DOMAIN_NAME}; style-src 'unsafe-inline'" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            elif [ "${CHOICE_SECURITY_HEADERS}" = '3' ]; then
+                echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set X-Frame-Options "SAMEORIGIN"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo "    Header always set Content-Security-Policy: default-src https:; style-src 'unsafe-inline'" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            elif [ "${CHOICE_SECURITY_HEADERS}" = '4' ]; then
+                echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set X-Frame-Options "SAMEORIGIN"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+                echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            fi
+            echo '</VirtualHost>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+            echo '</IfModule>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+        fi
+    fi
+    if [ "${CHOICE_SUBDOMAIN}" = '1' ] || [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
+        echo "Creating webfolder ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"
+        mkdir -p "${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"
+    elif [ "${CHOICE_SUBDOMAIN}" = '2' ] || [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
+        echo "Creating webfolder ${DOCUMENTROOT_PATH}/www.${DOMAIN_NAME}"
+        mkdir -p "${DOCUMENTROOT_PATH}/www.${DOMAIN_NAME}"
     fi
 }
 
@@ -666,6 +715,7 @@ sparry_main() {
         requirement_internet
         requirement_apache
         requirement_certbot
+        requirement_curl
         feature_add_webconfig
     elif [ "${ARGUMENT_NONE}" = '1' ]; then
         error_invalid_option
