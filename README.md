@@ -7,11 +7,11 @@ Sparry is a acronym for "SPawn Apache viRtualhosts eveRYwhere" (sorry, couldn't 
 * **Automated TLS certificates** with Let's Encrypt's official certbot client.
 * **Automated HTTP Security Headers** based on your use-case (different profiles available).
 * **Automated Error logging** based on your use-case (different options available).
+* **Generation of example virtual host** configuration that can be manually editted.
 * **Made for FreeBSD** and works on basic shell (so no advanced shells like bash or zsh required).
 
 ## Future plans
 * Automated despawning of virtual hosts, documentroots and certificates.
-* Generation of example virtual host configuration that can be manually editted.
 * Automated hardening of TLS configuration (modern cipher support etc.).
 
 ## How does it work
