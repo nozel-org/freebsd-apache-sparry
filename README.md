@@ -181,3 +181,17 @@ The example below uses the 'strict' HTTP Security Headers profile.
 
 ## Support
 If you have questions/suggestions about Sparry or find bugs, please let us know via the issue tracker.
+
+## Changelog
+### 1.1.0-STABLE
+- Added feature that generates example config that can be easily editted manually.
+- Fixed wrong error message bug in requirement_certbot function.
+- Renamed 'add_webconfig' internally to 'spawn' to be more in line with the theme.
+
+### 1.0.0-STABLE
+- First stable release with basic functionality.
+- Changed file name to 'sparry' (removed '.sh').
+- Can fully spawn VirtualHost configuration files.
+- Requests TLS-certificates.
+- Sets security headers.
+- Configures apache for TLS.
