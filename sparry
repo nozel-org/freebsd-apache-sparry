@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #############################################################################
-# Version 1.1.0-STABLE (26-03-2020)
+# Version 1.1.1-STABLE (26-04-2020)
 #############################################################################
 
 #############################################################################
@@ -20,7 +20,7 @@
 #############################################################################
 
 # remindbot version
-SPARRY_VERSION='1.1.0'
+SPARRY_VERSION='1.1.1'
 
 # apache parameters
 APACHE_DIR='/usr/local/etc/apache24'
@@ -261,7 +261,7 @@ sparry_help() {
 
 validate_dns_records() {
     # Sparry simply compares the default external IPv4 address with the DNS A record of the domain(s) chosen.
-    if [ "$(host -4 -t A $1 | awk '{print $4}')" = "${EXTERNAL_IP_ADDRESS}" ]; then
+    if [ "$(host -4 -t A $1 | grep -w "has address" | awk '{print $4}')" = "${EXTERNAL_IP_ADDRESS}" ]; then
         echo "     > Domain $1 has been configured correctly"
     else
         echo

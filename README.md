@@ -183,6 +183,9 @@ The example below uses the 'strict' HTTP Security Headers profile.
 If you have questions/suggestions about Sparry or find bugs, please let us know via the issue tracker.
 
 ## Changelog
+### 1.1.1-STABLE
+- Fixed bug in CNAME DNS record validation [#7](https://github.com/nozel-org/freebsd-apache-sparry/issues/7).
+
 ### 1.1.0-STABLE
 - Added feature that generates example config that can be easily editted manually.
 - Fixed wrong error message bug in requirement_certbot function.
