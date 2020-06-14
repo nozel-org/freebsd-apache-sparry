@@ -1,7 +1,7 @@
 # FreeBSD Apache Sparry
 Sparry is a acronym for "SPawn Apache viRtualhosts eveRYwhere" (sorry, couldn't come up with something better ;). Sparry is a easy to use management tool for apache VirtualHost configurations on FreeBSD. With Sparry most people should be able to create apache VirtualHost configurations that are simple and straight forward, but also reasonably secure.
 
-## Current features
+## Features
 * **Easy to use**: Sparry is made for (and with!) people that normally would get discouraged if they had to create VirtualHost files with modern minimum security requirements on servers.
 * **Automated basic apache configuration** so you don't have to enable modules yourself. 
 * **Automated TLS certificates** with Let's Encrypt's official certbot client.
@@ -10,15 +10,11 @@ Sparry is a acronym for "SPawn Apache viRtualhosts eveRYwhere" (sorry, couldn't 
 * **Generation of example virtual host** configuration that can be manually editted.
 * **Made for FreeBSD** and works on basic shell (so no advanced shells like bash or zsh required).
 
-## Future plans
-* Automated despawning of virtual hosts, documentroots and certificates.
-* Automated hardening of TLS configuration (modern cipher support etc.).
-
 ## How does it work
-Sparry asks some questions and will generate a VirtualHost configuration file and configure apache based on the answers given. Nothing too special. There is one VirtualHost configuration file for every domain.
+Sparry asks some questions and will generate a VirtualHost configuration file and configure apache based on the answers given. Sparry generates one VirtualHost configuration file (with optional certificate) for every domain. Optionally, for more advanced users some configuration parameters can be set in /usr/local/etc/sparry.conf for further finetuning.
 
 ## Limitations
-Sparry is really meant for basic tasks and is not suited for more advanced stuff like other subdomains than `www`, multiple domains in one file or the more complex Apache stuff.
+Sparry is really meant for basic tasks and is not suited for more advanced stuff like advanced Apache configurations.
 
 ## Examples
 ### Runthrough
@@ -111,8 +107,8 @@ Effectuating user choices
      # File locations:
      # Virtual host configuration: /usr/local/etc/apache24/Includes/nozel.org.conf
      # DocumentRoot directory:     /usr/local/www/nozel.org
+     # Certificate directory:      /usr/local/etc/letsencrypt/live/nozel.org
      ############################################################################
-
 ```
 
 ### Generated VirtualHost
@@ -183,18 +179,33 @@ The example below uses the 'strict' HTTP Security Headers profile.
 If you have questions/suggestions about Sparry or find bugs, please let us know via the issue tracker.
 
 ## Changelog
-### 1.1.1-STABLE
+### 1.2.0-STABLE (14-06-2020)
+- Added optional configuration file in /usr/local/etc/sparry.conf for additional finetuning of Sparry.
+- Added compatibility with Apache servers that listen on specific IP addresses instead of * [11](https://github.com/nozel-org/freebsd-apache-sparry/issues/11). This can be set in the new configuration file.
+- The email address that is required for Let's Encrypt certificates can now be set in the new configuration file [15](https://github.com/nozel-org/freebsd-apache-sparry/issues/15).
+- Added certificate location to summery [9](https://github.com/nozel-org/freebsd-apache-sparry/issues/9).
+- Fixed bug where http to https rewrite wasn't set correctly when the third security header profile was chosen [13](https://github.com/nozel-org/freebsd-apache-sparry/issues/13).
+- Fixed inconsistency in copyright notices [10](https://github.com/nozel-org/freebsd-apache-sparry/issues/10).
+- Fixed bug that in certain cases added 'Listen 443' to http.conf wrongly [12](https://github.com/nozel-org/freebsd-apache-sparry/issues/12).
+
+### 1.1.1-STABLE (26-04-2020)
 - Fixed bug in CNAME DNS record validation [#7](https://github.com/nozel-org/freebsd-apache-sparry/issues/7).
 
-### 1.1.0-STABLE
+### 1.1.0-STABLE (26-03-2020)
 - Added feature that generates example config that can be easily editted manually.
 - Fixed wrong error message bug in requirement_certbot function.
 - Renamed 'add_webconfig' internally to 'spawn' to be more in line with the theme.
 
-### 1.0.0-STABLE
+### 1.0.0-STABLE (21-03-2020)
 - First stable release with basic functionality.
 - Changed file name to 'sparry' (removed '.sh').
 - Can fully spawn VirtualHost configuration files.
 - Requests TLS-certificates.
 - Sets security headers.
 - Configures apache for TLS.
+
+## Future plans
+* Automated despawning of virtual hosts, documentroots and certificates.
+* Automated hardening of TLS configuration (modern cipher support etc.).
+* Automated hardening of Apache configuration.
+* Automated configuration of Apache's DoS protection `mod_evasive`.
