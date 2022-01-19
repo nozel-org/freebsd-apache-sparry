@@ -1,11 +1,11 @@
 #!/bin/sh
 
 #############################################################################
-# Version 1.2.0-STABLE (14-06-2020)
+# Version 1.3.0-RELEASE (19-01-2022)
 #############################################################################
 
 #############################################################################
-# Copyright 2016-2020 Nozel/Sebas Veeke. Licenced under a Creative Commons
+# Copyright 2016-2022 Nozel/Sebas Veeke. Licenced under a Creative Commons
 # Attribution-NonCommercial-ShareAlike 4.0 International License.
 #
 # See https://creativecommons.org/licenses/by-nc-sa/4.0/
@@ -20,7 +20,7 @@
 #############################################################################
 
 # remindbot version
-SPARRY_VERSION='1.2.0'
+SPARRY_VERSION='1.3.0'
 
 # apache parameters
 APACHE_DIR='/usr/local/etc/apache24'
@@ -44,6 +44,7 @@ DOCUMENTROOT_PATH='0'
 CHOICE_TLS='0'
 EMAIL_ADDRESS='0'
 CHOICE_SECURITY_HEADERS='0'
+CHOICE_EXAMPLE_TEMPLATE='0'
 CHOICE_LOGGING='0'
 CHOICE_RESTART_APACHE='0'
 APACHE_LISTEN_IP='0'
@@ -132,7 +133,7 @@ error_apache_not_installed() {
 
 error_certbot_not_installed() {
     echo 'sparry: certbot not installed'
-    echo "use 'pkg install py37-certbot py37-certbot-apache' or install certbot from ports."
+    echo "use 'pkg install py38-certbot py38-certbot-apache' or install certbot from ports."
     exit 1
 }
 
@@ -187,13 +188,6 @@ error_empty_port_required() {
 # REQUIREMENT FUNCTIONS
 #############################################################################
 
-#requirement_argument_validity() {
-    # show error when amount of arguments is not equal to one
-    #if [ "$#" -eq 0 ]; then
-    #    error_wrong_amount_of_arguments
-    #fi
-#}
-
 requirement_root() {
     # show error when sparry has no root privileges
     if [ "$(id -u)" -ne 0 ]; then
@@ -236,15 +230,13 @@ requirement_internet() {
     fi
 }
 
-# CHECK OM DUBBELE CONFIGS TE VOORKOMEN
-
 #############################################################################
-# MANAGEMENT FUNCTIONS
+# GENERAL FUNCTIONS
 #############################################################################
 
 sparry_version() {
-    echo "sparry ${SPARRY_VERSION}"
-    echo "Copyright (C) 2016-2020 Nozel."
+    echo "sparry version ${SPARRY_VERSION}"
+    echo "Copyright (C) 2016-2022 Nozel."
     echo "License CC Attribution-NonCommercial-ShareAlike 4.0 Int."
     echo
     echo "Written by Sebas Veeke"
@@ -279,6 +271,107 @@ validate_dns_records() {
     fi
 }
 
+check_apache_modules() {
+    # make sure apache configuration (httpd.conf) has required modules enabled
+    echo
+    echo 'Effectuating user choices'
+    # some modules have to be enabled in order to work nicely with sparry. it first checks whether 
+    # they are enabled in http.conf and if not tries to uncomment the commented module listing.
+    # if that fails as well it adds the needed entries itself on the end of http.conf
+    echo '> Checking httpd.conf for required apache modules'
+    # make sure mod_ssl is enabled
+    grep --line-regexp --quiet 'LoadModule ssl_module libexec/apache24/mod_ssl.so' ${APACHE_DIR}/httpd.conf
+    if [ "${?}" -eq '0' ]; then
+        echo '> ssl_module is already enabled'
+    else
+        echo '> ssl_module is disabled, enabling now'
+        grep --line-regexp --quiet '#LoadModule ssl_module libexec/apache24/mod_ssl.so' ${APACHE_DIR}/httpd.conf
+        if [ "${?}" -eq '0' ]; then
+            sed -i -e s%'#LoadModule ssl_module libexec/apache24/mod_ssl.so'%'LoadModule ssl_module libexec/apache24/mod_ssl.so'%g ${APACHE_DIR}/httpd.conf
+        else
+            echo '' >> ${APACHE_DIR}/httpd.conf
+            echo '# Line below was automatically added by Sparry' >> ${APACHE_DIR}/httpd.conf
+            echo 'LoadModule ssl_module libexec/apache24/mod_ssl.so' >> ${APACHE_DIR}/httpd.conf
+        fi
+    fi
+    # make sure mod_rewrite is enabled
+    grep --line-regexp --quiet 'LoadModule rewrite_module libexec/apache24/mod_rewrite.so' ${APACHE_DIR}/httpd.conf
+    if [ "${?}" -eq '0' ]; then
+        echo '> rewrite_module is already enabled'
+    else
+        echo '> rewrite_modules is disabled, enabling now'
+        grep --line-regexp --quiet '#LoadModule rewrite_module libexec/apache24/mod_rewrite.so' ${APACHE_DIR}/httpd.conf
+        if [ "${?}" -eq '0' ]; then
+            sed -i -e s%'#LoadModule rewrite_module libexec/apache24/mod_rewrite.so'%'LoadModule rewrite_module libexec/apache24/mod_rewrite.so'%g ${APACHE_DIR}/httpd.conf
+        else
+            echo '' >> ${APACHE_DIR}/httpd.conf
+            echo '# Line below was automatically added by Sparry' >> ${APACHE_DIR}/httpd.conf
+            echo 'LoadModule rewrite_module libexec/apache24/mod_rewrite.so' >> ${APACHE_DIR}/httpd.conf
+        fi
+    fi
+    # make sure apache listens on port 443
+    echo '> Checking if apache listens on port 443'
+    grep --line-regexp --quiet '^Listen.*443$' ${APACHE_DIR}/httpd.conf
+    if [ "${?}" -eq '0' ]; then
+        echo '> Apache is already listening on port 443'
+    else
+        echo '> Apache does not listen on port 443, enabling now'
+        grep --line-regexp --quiet '#Listen 443' ${APACHE_DIR}/httpd.conf
+        if [ "${?}" -eq '0' ]; then
+            sed -i -e s%'#Listen443'%'Listen 443'%g ${APACHE_DIR}/httpd.conf
+        else
+            echo >> ${APACHE_DIR}/httpd.conf
+            echo '# Line below was automatically added by Sparry' >> ${APACHE_DIR}/httpd.conf
+            echo 'Listen 443' >> ${APACHE_DIR}/httpd.conf
+        fi
+    fi            
+    # make sure nothing uses port 80 (certbot needs it)
+    echo '> Checking if port 80 is being currently used'
+    sockstat -l | grep :80 > /dev/null
+    if [ "${?}" -eq '0' ]; then
+        echo '> Port 80 is being used, trying to find service'
+        service apache24 status > /dev/null
+        if [ "${?}" -eq '0' ]; then
+            echo '> Apache found on port 80, stopping service apache'
+            service apache24 stop
+        else
+            echo '> Cannot find service that uses port 80, please stop service first'
+            error_empty_port_required
+        fi
+    else
+        echo '> Port 80 is not being used, Sparry will continue'
+    fi
+}
+
+request_certificate() {
+    # request TLS certificate through certbot based on chosen key size and (sub)domain layout
+    # explanation of certbot arguments:
+    # 'certonly' let us retrieve only a certificate, since Sparry will take care of putting it in the vhost
+    # 'standalone' is the used certbot method
+    # 'quiet' is used to suppress certbot output
+    # 'non-interactive' makes certbot somewhat non-interactive
+    # 'agree-tos' accepts the certbot terms of service without user interaction
+    # 'email' adds the earlier given email address, also to limit user interaction
+    # 'certname' makes sure our certificate always have the name of the domain
+    # 'rsa-key-size' let us choose the rsa key size (in this case either 2048 or 4096 bit)
+    # 'domain' is pretty self-explanatory
+    echo '> Requesting TLS certificate'
+    if [ "${CHOICE_TLS}" = '1' ] && [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
+        certbot certonly --standalone --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 2048 --domain ${DOMAIN_NAME}
+    elif [ "${CHOICE_TLS}" = '1' ] && [ "${CHOICE_SUBDOMAIN}" = '2' ]; then
+        certbot certonly --standalone --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 2048 --domain www.${DOMAIN_NAME}
+    elif [ "${CHOICE_TLS}" = '1' ] && [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
+        certbot certonly --standalone --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 2048 --domain ${DOMAIN_NAME} --domain www.${DOMAIN_NAME}
+    elif [ "${CHOICE_TLS}" = '2' ] && [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
+        certbot certonly --standalone --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 4096 --domain ${DOMAIN_NAME}
+    elif [ "${CHOICE_TLS}" = '2' ] && [ "${CHOICE_SUBDOMAIN}" = '2' ]; then
+        certbot certonly --standalone --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 4096 --domain www.${DOMAIN_NAME}
+    elif [ "${CHOICE_TLS}" = '2' ] && [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
+        certbot certonly --standalone --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 4096 --domain ${DOMAIN_NAME} --domain www.${DOMAIN_NAME}
+    fi
+    echo '> Certificate received'
+}
+
 #############################################################################
 # FEATURE FUNCTIONS
 #############################################################################
@@ -303,9 +396,8 @@ feature_spawn() {
 
     echo
     echo 'Sparry will guide you through the creation of a new apache virtual host'
-    echo 'configuration file now. Please answer the following questions:'
+    echo 'configuration file. Please answer the following questions:'
     echo
-    # ask whether DNS has been configured already and validate input
     # this question is meant to make clear to the user that DNS should really be configured before using sparry
     while true
         do
@@ -331,13 +423,11 @@ feature_spawn() {
     # ask for (sub)domain layout and validate input
     echo '(3)  Select (sub)domain layout:'
     echo "     1 ${DOMAIN_NAME}"
-    echo "     2 www.${DOMAIN_NAME}"
-    echo "     3 ${DOMAIN_NAME} and www.${DOMAIN_NAME}"
+    echo "     2 ${DOMAIN_NAME} and www.${DOMAIN_NAME}"
     while true
         do
-            read -r -p '     [1-3]: ' CHOICE_SUBDOMAIN
-            [ "${CHOICE_SUBDOMAIN}" = '1' ] || [ "${CHOICE_SUBDOMAIN}" = '2' ] || \
-            [ "${CHOICE_SUBDOMAIN}" = '3' ] && break
+            read -r -p '     [1-2]: ' CHOICE_SUBDOMAIN
+            [ "${CHOICE_SUBDOMAIN}" = '1' ] || [ "${CHOICE_SUBDOMAIN}" = '2' ] && break
             error_type_valid_number
         done
     # check whether DNS records have been properly set
@@ -348,13 +438,11 @@ feature_spawn() {
     if [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
         validate_dns_records "${DOMAIN_NAME}"
     elif [ "${CHOICE_SUBDOMAIN}" = '2' ]; then
-        validate_dns_records "www.${DOMAIN_NAME}"
-    elif [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
         validate_dns_records "${DOMAIN_NAME}"
         validate_dns_records "www.${DOMAIN_NAME}"
     fi
     # ask for DocumentRoot and if empty variable, populate with $DEFAULT_DOCUMENTROOT
-    echo '(4)  DocumentRoot (full path or empty for FreeBSD default):'
+    echo "(4)  DocumentRoot (full path or empty for /usr/local/www/${DOMAIN_NAME}):"
     read -r -p '     : ' DOCUMENTROOT_PATH
     if [ -z "${DOCUMENTROOT_PATH}" ]; then
         DOCUMENTROOT_PATH="${DEFAULT_DOCUMENTROOT}"
@@ -364,54 +452,37 @@ feature_spawn() {
     echo '(5)  Add TLS certificate?'
     echo '     1 TLS certificate with RSA key size of 2048 bits (default)'
     echo '     2 TLS certificate with RSA key size of 4096 bits (paranoid)'
-    echo '     3 No TLS certificate (not recommended)'
     while true
         do
-            read -r -p '     [1-3]: ' CHOICE_TLS
-            [ "${CHOICE_TLS}" = '1' ] || [ "${CHOICE_TLS}" = '2' ] || \
-            [ "${CHOICE_TLS}" = '3' ] && break
+            read -r -p '     [1-2]: ' CHOICE_TLS
+            [ "${CHOICE_TLS}" = '1' ] || [ "${CHOICE_TLS}" = '2' ] && break
             error_type_valid_number
         done
-    # security headers configuration depends partly on the use of TLS. the more strict security
-    # headers won't be compatible with http-only traffic. more options will be available when TLS
-    # is selected. input will be validated.
-    if [ "${CHOICE_TLS}" = '1' ] || [ "${CHOICE_TLS}" = '2' ]; then
-        # let's encrypt requires a email address, but you can add a fake one. another option would be to
-        # use the --register-unsafely-without-email flag, but that isn't recommended so it isn't supported
-        if [ "${LETSENCRYPT_EMAIL}" = '0' ]; then
-            read -r -p "(5b) Enter Let's Encrypt email address: " EMAIL_ADDRESS
-        else
-            echo "(5b) Found email address in sparry.conf, skipping question"
-            EMAIL_ADDRESS="${LETSENCRYPT_EMAIL}"
-        fi
-        echo '(6)  Add HTTP security headers?'
-        echo '     1 Strict    [enforce: HTTPS] [disable: ext-resource, inline-css, iframes]'
-        echo '     2 Loose     [enforce: HTTPS] [disable: ext-resource, iframes] [enable: inline-css]'
-        echo '     3 Poor      [enforce: HTTPS] [enable: ext-resource, inline-css, iframes]'
-        echo '     4 Weak      [allow: HTTP]    [enable: ext-resource, inline-css, iframes]'
-        echo '     5 None      [disable: HTTP security headers]'
-        while true
-            do
-                read -r -p '     [1-5]: ' CHOICE_SECURITY_HEADERS
-                [ "${CHOICE_SECURITY_HEADERS}" = '1' ] || [ "${CHOICE_SECURITY_HEADERS}" = '2' ] || \
-                [ "${CHOICE_SECURITY_HEADERS}" = '3' ] || [ "${CHOICE_SECURITY_HEADERS}" = '4' ] || \
-                [ "${CHOICE_SECURITY_HEADERS}" = '5' ] && break
-                error_type_valid_number
-            done
+    # let's encrypt requires a email address, but you can add a fake one. another option would be to
+    # use the --register-unsafely-without-email flag, but that isn't recommended so it isn't supported
+    if [ "${LETSENCRYPT_EMAIL}" = '0' ]; then
+        read -r -p "(5b) Enter Let's Encrypt email address: " EMAIL_ADDRESS
     else
-        echo '(6)  Add HTTP security headers?'
-        echo '     x Strict    [NOT AVAILABLE WITHOUT TLS]'
-        echo '     x Loose     [NOT AVAILABLE WITHOUT TLS]'
-        echo '     x Poor      [NOT AVAILABLE WITHOUT TLS]'
-        echo '     4 Weak      [allow: HTTP]    [enable: ext-resource, inline-css, iframes]'
-        echo '     5 None      [disable: HTTP security headers]'
-        while true
-            do
-                read -r -p '     [4-5]: ' CHOICE_SECURITY_HEADERS
-                [ "${CHOICE_SECURITY_HEADERS}" = '4' ] || [ "${CHOICE_SECURITY_HEADERS}" = '5' ] && break
-                error_type_valid_number
-            done
+        echo "(5b) Found email address in sparry.conf, skipping question"
+        EMAIL_ADDRESS="${LETSENCRYPT_EMAIL}"
     fi
+    echo '(6)  Add HTTP security headers?'
+    echo '     1 Strict           [enforce: HTTPS] [disable: ext-resource, inline-css, iframes]'
+    echo '     2 Loose            [enforce: HTTPS] [disable: ext-resource, iframes] [enable: inline-css]'
+    echo '     3 Poor             [enforce: HTTPS] [enable: ext-resource, inline-css, iframes]'
+    echo '     4 Weak             [allow: HTTP]    [enable: ext-resource, inline-css, iframes]'
+    echo '     5 None             [disable: HTTP security headers]'
+    echo '     6 Wordpress        VirtualHost configuration for default Wordpress installation'
+    echo '     7 NextCloud        VirtualHost configuration for default NextCloud installation'
+    while true
+        do
+            read -r -p '     [1-5]: ' CHOICE_SECURITY_HEADERS
+            [ "${CHOICE_SECURITY_HEADERS}" = '1' ] || [ "${CHOICE_SECURITY_HEADERS}" = '2' ] || \
+            [ "${CHOICE_SECURITY_HEADERS}" = '3' ] || [ "${CHOICE_SECURITY_HEADERS}" = '4' ] || \
+            [ "${CHOICE_SECURITY_HEADERS}" = '5' ] || [ "${CHOICE_SECURITY_HEADERS}" = '6' ] || \
+            [ "${CHOICE_SECURITY_HEADERS}" = '7' ] && break
+            error_type_valid_number
+        done
     # ask what logging configuration should be used and validate input
     echo '(7)  Add logging?'
     echo '     1 Error logging'
@@ -442,9 +513,6 @@ feature_spawn() {
         echo "     # ServerName:         ${DOMAIN_NAME}"
         echo "     # DocumentRoot:       ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"
     elif [ "${CHOICE_SUBDOMAIN}" = '2' ]; then
-        echo "     # ServerName:         www.${DOMAIN_NAME}"
-        echo "     # DocumentRoot:       ${DOCUMENTROOT_PATH}/www.${DOMAIN_NAME}"
-    elif [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
         echo "     # ServerName:         ${DOMAIN_NAME}"
         echo "     # ServerAlias         www.${DOMAIN_NAME}"
         echo "     # DocumentRoot:       ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"
@@ -455,10 +523,9 @@ feature_spawn() {
     elif [ "${CHOICE_TLS}" = '2' ]; then
         echo '     # TLS certificate:    RSA 4096'
         echo "     # TLS email address:  ${EMAIL_ADDRESS}"
-    elif [ "${CHOICE_TLS}" = '3' ]; then
-        echo '     # TLS certificate:    None'
     fi
     if [ "${CHOICE_SECURITY_HEADERS}" = '1' ]; then
+        echo '     # Selected profile:   strict'
         echo '     # Security headers:'
         echo '     #   Strict-Transport-Security: "max-age=31536000; includeSubDomains;"'
         echo '     #   X-Frame-Options "DENY"'
@@ -468,6 +535,7 @@ feature_spawn() {
         echo '     #   Referrer-Policy same-origin'
         echo "     #   Content-Security-Policy: default-src https://${DOMAIN_NAME}"
     elif [ "${CHOICE_SECURITY_HEADERS}" = '2' ]; then
+        echo '     # Selected profile:   loose'
         echo '     # Security headers:'
         echo '     #   Strict-Transport-Security: "max-age=31536000; includeSubDomains;"'
         echo '     #   X-Frame-Options "DENY"'
@@ -477,6 +545,7 @@ feature_spawn() {
         echo '     #   Referrer-Policy same-origin'
         echo "     #   Content-Security-Policy: default-src https://${DOMAIN_NAME}; style-src 'unsafe-inline'"
     elif [ "${CHOICE_SECURITY_HEADERS}" = '3' ]; then
+        echo '     # Selected profile:   poor'
         echo '     # Security headers:'
         echo '     #   Strict-Transport-Security: "max-age=31536000; includeSubDomains;"'
         echo '     #   X-Frame-Options "SAMEORIGIN"'
@@ -486,6 +555,7 @@ feature_spawn() {
         echo '     #   Referrer-Policy same-origin'
         echo "     #   Content-Security-Policy: default-src https:; style-src 'unsafe-inline'"
     elif [ "${CHOICE_SECURITY_HEADERS}" = '4' ]; then
+        echo '     # Selected profile:   week'
         echo '     # Security headers:'
         echo '     #   X-Frame-Options "SAMEORIGIN"'
         echo '     #   X-XSS-Protection: "1; mode=block"'
@@ -493,7 +563,22 @@ feature_spawn() {
         echo '     #   X-Permitted-Cross-Domain-Policies: none'
         echo '     #   Referrer-Policy same-origin'
     elif [ "${CHOICE_SECURITY_HEADERS}" = '5' ]; then
+        echo '     # Selected profile:   no security headers'
         echo '     # Security headers:   Disabled'
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '6' ]; then
+        echo '     # Selected profile:   wordpress'
+        echo '     # Security headers:'
+        echo '     #   Header always set Strict-Transport-Security: "max-age=31536000; includeSubDomains;"'
+        echo '     #   Header always set X-Frame-Options "SAMEORIGIN"'
+        echo '     #   Header always set X-XSS-Protection: "1; mode=block"'
+        echo '     #   Header always set X-Content-Type-Options "nosniff"'
+        echo '     #   Header always set X-Permitted-Cross-Domain-Policies: none'
+        echo '     #   Header always set Referrer-Policy same-origin'
+        echo '     #   Header always set Content-Security-Policy "default-src https: data: 'unsafe-inline' 'unsafe-eval'"'
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '7' ]; then
+        echo '     # Selected profile:   nextcloud'
+        echo '     # Security headers:'
+        echo '     #   Header always set Strict-Transport-Security "max-age=15552000; includeSubDomains"'
     fi
     if [ "${CHOICE_LOGGING}" = '1' ]; then
         echo '     # Logging:            Error logging'
@@ -523,310 +608,67 @@ feature_spawn() {
     fi
 
     ### 3 EFFECTUATE USER CHOICES
-    # make sure apache configuration (httpd.conf) has required modules enabled
-    echo
-    echo 'Effectuating user choices'
-    if [ "${CHOICE_TLS}" = '1' ] || [ "${CHOICE_TLS}" = '2' ]; then
-        echo
-        # some modules have to be enabled in order to work nicely with sparry. it first checks whether 
-        # they are enabled in http.conf and if not tries to uncomment the commented module listing.
-        # if that fails as well it adds the needed entries itself on the end of http.conf
-        echo '> Checking httpd.conf for required apache modules'
-        # make sure mod_ssl is enabled
-        grep --line-regexp --quiet 'LoadModule ssl_module libexec/apache24/mod_ssl.so' ${APACHE_DIR}/httpd.conf
-        if [ "${?}" -eq '0' ]; then
-            echo '> ssl_module is already enabled'
-        else
-            echo '> ssl_module is disabled, enabling now'
-            grep --line-regexp --quiet '#LoadModule ssl_module libexec/apache24/mod_ssl.so' ${APACHE_DIR}/httpd.conf
-            if [ "${?}" -eq '0' ]; then
-                sed -i -e s%'#LoadModule ssl_module libexec/apache24/mod_ssl.so'%'LoadModule ssl_module libexec/apache24/mod_ssl.so'%g ${APACHE_DIR}/httpd.conf
-            else
-                echo '# Line below was automatically added by Sparry' >> ${APACHE_DIR}/httpd.conf
-                echo 'LoadModule ssl_module libexec/apache24/mod_ssl.so' >> ${APACHE_DIR}/httpd.conf
-            fi
-        fi
-        # make sure mod_rewrite is enabled
-        grep --line-regexp --quiet 'LoadModule rewrite_module libexec/apache24/mod_rewrite.so' ${APACHE_DIR}/httpd.conf
-        if [ "${?}" -eq '0' ]; then
-            echo '> rewrite_module is already enabled'
-        else
-            echo '> rewrite_modules is disabled, enabling now'
-            grep --line-regexp --quiet '#LoadModule rewrite_module libexec/apache24/mod_rewrite.so' ${APACHE_DIR}/httpd.conf
-            if [ "${?}" -eq '0' ]; then
-                sed -i -e s%'#LoadModule rewrite_module libexec/apache24/mod_rewrite.so'%'LoadModule rewrite_module libexec/apache24/mod_rewrite.so'%g ${APACHE_DIR}/httpd.conf
-            else
-                echo '# Line below was automatically added by Sparry' >> ${APACHE_DIR}/httpd.conf
-                echo 'LoadModule rewrite_module libexec/apache24/mod_rewrite.so' >> ${APACHE_DIR}/httpd.conf
-            fi
-        fi
-        # make sure apache listens on port 443
-        echo '> Checking if apache listens on port 443'
-        grep --line-regexp --quiet '^Listen.*443$' ${APACHE_DIR}/httpd.conf
-        if [ "${?}" -eq '0' ]; then
-            echo '> Apache is already listening on port 443'
-        else
-            echo '> Apache does not listen on port 443, enabling now'
-            grep --line-regexp --quiet '#Listen 443' ${APACHE_DIR}/httpd.conf
-            if [ "${?}" -eq '0' ]; then
-                sed -i -e s%'#Listen443'%'Listen 443'%g ${APACHE_DIR}/httpd.conf
-            else
-                echo >> ${APACHE_DIR}/httpd.conf
-                echo '# Line below was automatically added by Sparry' >> ${APACHE_DIR}/httpd.conf
-                echo 'Listen 443' >> ${APACHE_DIR}/httpd.conf
-            fi
-        fi            
-        # make sure nothing uses port 80 (certbot needs it)
-        echo '> Checking if port 80 is being currently used'
-        sockstat -l | grep :80 > /dev/null
-        if [ "${?}" -eq '0' ]; then
-            echo '> Port 80 is being used, trying to find service'
-            service apache24 status > /dev/null
-            if [ "${?}" -eq '0' ]; then
-                echo '> Apache found on port 80, stopping service apache'
-                service apache24 stop
-            else
-                echo '> Cannot find service that uses port 80, please stop service first'
-                error_empty_port_required
-            fi
-        else
-            echo '> Port 80 is not being used, Sparry will continue'
-        fi
-        # request TLS certificate through certbot based on chosen key size and (sub)domain layout
-        # explanation of certbot arguments:
-        # 'certonly' let us retrieve only a certificate, since Sparry will take care of putting it in the vhost
-        # 'standalone' is the used certbot method
-        # 'quiet' is used to suppress certbot output
-        # 'non-interactive' makes certbot somewhat non-interactive
-        # 'agree-tos' accepts the certbot terms of service without user interaction
-        # 'email' adds the earlier given email address, also to limit user interaction
-        # 'certname' makes sure our certificate always have the name of the domain
-        # 'rsa-key-size' let us choose the rsa key size (in this case either 2048 or 4096 bit)
-        # 'domain' is pretty self-explanatory
-        echo '> Requesting TLS certificate'
-        if [ "${CHOICE_TLS}" = '1' ] && [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
-            certbot certonly --standalone --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 2048 --domain ${DOMAIN_NAME}
-        elif [ "${CHOICE_TLS}" = '1' ] && [ "${CHOICE_SUBDOMAIN}" = '2' ]; then
-            certbot certonly --standalone --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 2048 --domain www.${DOMAIN_NAME}
-        elif [ "${CHOICE_TLS}" = '1' ] && [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
-            certbot certonly --standalone --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 2048 --domain ${DOMAIN_NAME} --domain www.${DOMAIN_NAME}
-        elif [ "${CHOICE_TLS}" = '2' ] && [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
-            certbot certonly --standalone --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 4096 --domain ${DOMAIN_NAME}
-        elif [ "${CHOICE_TLS}" = '2' ] && [ "${CHOICE_SUBDOMAIN}" = '2' ]; then
-            certbot certonly --standalone --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 4096 --domain www.${DOMAIN_NAME}
-        elif [ "${CHOICE_TLS}" = '2' ] && [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
-            certbot certonly --standalone --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 4096 --domain ${DOMAIN_NAME} --domain www.${DOMAIN_NAME}
-        fi
-        echo '> Certificate received'
+    check_apache_modules
+    #request_certificate
+  
+    # spawn VirtualHost configuration file based on choices
+    echo "> Downloading base VirtualHost template to ${DOMAIN_NAME}.conf"
+    if [ "${CHOICE_SECURITY_HEADERS}" = '1' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_strict.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '2' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_loose.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '3' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_poor.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '4' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_weak.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '5' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_none.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '6' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_wordpress.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '7' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_nextcloud.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
     fi
-    # create VirtualHost configuration file based on choices
-    echo "> Creating ${DOMAIN_NAME}.conf in ${APACHE_CONFDIR}"
-    touch ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+
     echo "> Setting ownership and permissions on ${DOMAIN_NAME}.conf"
     chown root:wheel ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
     chmod 644 ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    # add VirtualHost for http requests
-    echo "> Adding VirtualHost for http requests to ${DOMAIN_NAME}.conf"
-    echo "# apache configuration file generated by sparry" > ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    # use $APACHE_LISTEN_IP if this is set in the sparry configuration file
-    if [ "${APACHE_LISTEN_IP}" = '0' ]; then
-        echo '<VirtualHost *:80>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    else
-        echo "<VirtualHost ${APACHE_LISTEN_IP}:80>" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    fi
-    if [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
-        echo "    ServerName ${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    DocumentRoot ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    elif [ "${CHOICE_SUBDOMAIN}" = '2' ]; then
-        echo "    ServerName www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    DocumentRoot ${DOCUMENTROOT_PATH}/www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    elif [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
-        echo "    ServerName ${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    ServerAlias www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    DocumentRoot ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    fi
-    echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    echo '    # Apache directory control access' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    echo '    <Directory "'"${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"'">' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    echo '        Require all granted' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    echo '    </Directory>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    if [ "${CHOICE_LOGGING}" = '1' ]; then
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # Logging' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    ErrorLog "/var/log/httpd-'"${DOMAIN_NAME}-error.log"'"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    elif [ "${CHOICE_LOGGING}" = '2' ]; then
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # Logging' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    CustomLog "/var/log/httpd-'"${DOMAIN_NAME}-access.log"'" common' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    elif [ "${CHOICE_LOGGING}" = '3' ]; then
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # Logging' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    ErrorLog "/var/log/httpd-'"${DOMAIN_NAME}-error.log"'"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    CustomLog "/var/log/httpd-'"${DOMAIN_NAME}-access.log"'" common' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    fi
-    if [ "${CHOICE_SECURITY_HEADERS}" = '1' ]; then
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set Strict-Transport-Security: "max-age=31536000; includeSubDomains;"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Frame-Options "DENY"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set Content-Security-Policy: "default-src https://'"${DOMAIN_NAME}"';"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # Rewrite requests to HTTPS' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    RewriteEngine on' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    RewriteCond %{SERVER_NAME} =${DOMAIN_NAME} [OR]" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    RewriteCond %{SERVER_NAME} =www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    RewriteRule ^ https://%{SERVER_NAME}%{REQUEST_URI} [END,QSA,R=permanent]' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    elif [ "${CHOICE_SECURITY_HEADERS}" = '2' ]; then
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set Strict-Transport-Security: "max-age=31536000; includeSubDomains;"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Frame-Options "DENY"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set Content-Security-Policy: "default-src https://'"${DOMAIN_NAME} style-src 'unsafe-inline'"'"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # Rewrite requests to HTTPS' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    RewriteEngine on' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    RewriteCond %{SERVER_NAME} =${DOMAIN_NAME} [OR]" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    RewriteCond %{SERVER_NAME} =www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    RewriteRule ^ https://%{SERVER_NAME}%{REQUEST_URI} [END,QSA,R=permanent]' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    elif [ "${CHOICE_SECURITY_HEADERS}" = '3' ]; then
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Frame-Options "SAMEORIGIN"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set Content-Security-Policy: "default-src https:; style-src'" 'unsafe-inline'"'"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # Rewrite requests to HTTPS' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    RewriteEngine on' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    RewriteCond %{SERVER_NAME} =${DOMAIN_NAME} [OR]" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    RewriteCond %{SERVER_NAME} =www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    RewriteRule ^ https://%{SERVER_NAME}%{REQUEST_URI} [END,QSA,R=permanent]' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    elif [ "${CHOICE_SECURITY_HEADERS}" = '4' ]; then
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Frame-Options "SAMEORIGIN"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-    fi
-    echo '</VirtualHost>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
 
-    if [ "${CHOICE_TLS}" = '1' ] || [ "${CHOICE_TLS}" = '2' ]; then
-        # add VirtualHost for https requests
-        echo "> Adding VirtualHost for https requests to ${DOMAIN_NAME}.conf"
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '<IfModule mod_ssl.c>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        # use $APACHE_LISTEN_IP if this is set in the sparry configuration file
-        if [ "${APACHE_LISTEN_IP}" = '0' ]; then
-            echo '<VirtualHost *:443>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        else
-            echo "<VirtualHost ${APACHE_LISTEN_IP}:443>" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        fi
-        if [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
-            echo "    ServerName ${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo "    DocumentRoot ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        elif [ "${CHOICE_SUBDOMAIN}" = '2' ]; then
-            echo "    ServerName www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo "    DocumentRoot ${DOCUMENTROOT_PATH}/www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        elif [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
-            echo "    ServerName ${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo "    ServerAlias www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo "    DocumentRoot ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        fi
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    # Apache directory control access' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    <Directory "'"${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"'">' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '        Require all granted' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '    </Directory>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        if [ "${CHOICE_LOGGING}" = '1' ]; then
-            echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    # Logging' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    ErrorLog "/var/log/httpd-'"${DOMAIN_NAME}-error.log"'"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        elif [ "${CHOICE_LOGGING}" = '2' ]; then
-            echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    # Logging' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    CustomLog "/var/log/httpd-'"${DOMAIN_NAME}-access.log"'" common' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        elif [ "${CHOICE_LOGGING}" = '3' ]; then
-            echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    # Logging' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    ErrorLog "/var/log/httpd-'"${DOMAIN_NAME}-error.log"'"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    CustomLog "/var/log/httpd-'"${DOMAIN_NAME}-access.log"'" common' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        fi
-        if [ "${CHOICE_SECURITY_HEADERS}" = '1' ]; then
-            echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set Strict-Transport-Security: "max-age=31536000; includeSubDomains;"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set X-Frame-Options "DENY"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set Content-Security-Policy: "default-src https://'"${DOMAIN_NAME}"';"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        elif [ "${CHOICE_SECURITY_HEADERS}" = '2' ]; then
-            echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set Strict-Transport-Security: "max-age=31536000; includeSubDomains;"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set X-Frame-Options "DENY"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set Content-Security-Policy: "default-src https://'"${DOMAIN_NAME} style-src 'unsafe-inline'"'"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        elif [ "${CHOICE_SECURITY_HEADERS}" = '3' ]; then
-            echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set X-Frame-Options "SAMEORIGIN"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set Content-Security-Policy: "default-src https:; style-src'" 'unsafe-inline'"'"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        elif [ "${CHOICE_SECURITY_HEADERS}" = '4' ]; then
-            echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set X-Frame-Options "SAMEORIGIN"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-            echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        fi
-        echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    # Let's Encrypt configuration" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    SSLCertificateFile ${LETSENCRYPT_CERTDIR}/live/${DOMAIN_NAME}/fullchain.pem" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    SSLCertificateKeyFile ${LETSENCRYPT_CERTDIR}/live/${DOMAIN_NAME}/privkey.pem" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo "    Include ${LETSENCRYPT_CERTDIR}/options-ssl-apache.conf" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '</VirtualHost>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
-        echo '</IfModule>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf
+    echo "> Customizing VirtualHost configuration in ${DOMAIN_NAME}.conf"
+    if [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
+        sed -i '' '/ServerAlias www.<domain_name>/d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
     fi
+    if [ "${CHOICE_LOGGING}" = '1' ]; then
+        sed -i '' '/CustomLog "/var/log/httpd-<domain_name>-access.log" common/d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+    elif [ "${CHOICE_LOGGING}" = '2' ]; then
+        sed -i '' '/ErrorLog "/var/log/httpd-<domain_name>-error.log"" common/d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+    elif [ "${CHOICE_LOGGING}" = '4' ]; then
+        sed -i '' '/CustomLog "/var/log/httpd-<domain_name>-access.log" common/d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+        sed -i '' '/ErrorLog "/var/log/httpd-<domain_name>-error.log"" common/d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+    fi
+    sed -i -e s%"<domain_name>"%"${DOMAIN_NAME}"%g "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+
     # create DocumentRoot if it not already exists
     if [ ! -d "${DOCUMENTROOT_PATH}/${DOMAIN_NAME}" ]; then
-        echo "> Creating webfolder ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"
+        echo "> Creating document folder ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"
         mkdir -p "${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"
+        echo "> Setting document folder user and group to www"
         chown www:www "${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"
     else
-        echo "> Directory ${DOCUMENTROOT_PATH}/${DOMAIN_NAME} already exists, skipping creation"
+        echo "> Document folder ${DOCUMENTROOT_PATH}/${DOMAIN_NAME} already exists, skipping creation"
     fi
     # create sparry test page if no other index.html already exists
     if [ ! -f "${DOCUMENTROOT_PATH}/${DOMAIN_NAME}/index.html" ]; then
-        echo "> Creating test file in ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"
+        echo "> Creating test file in ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}/index.html"
         touch "${DOCUMENTROOT_PATH}/${DOMAIN_NAME}/index.html"
-        chown www:www "${DOCUMENTROOT_PATH}/${DOMAIN_NAME}/index.html"
         echo '<!DOCTYPE html>' > "${DOCUMENTROOT_PATH}/${DOMAIN_NAME}/index.html"
         echo '<html>' >> "${DOCUMENTROOT_PATH}/${DOMAIN_NAME}/index.html"
         echo '<body>' >> "${DOCUMENTROOT_PATH}/${DOMAIN_NAME}/index.html"
         echo '<h1>Sparry spawned new virtual host succesfully</h1>' >> "${DOCUMENTROOT_PATH}/${DOMAIN_NAME}/index.html"
         echo '</body>' >> "${DOCUMENTROOT_PATH}/${DOMAIN_NAME}/index.html"
         echo '</html>' >> "${DOCUMENTROOT_PATH}/${DOMAIN_NAME}/index.html"
+        echo "> Setting test file user and group to www"
+        chown www:www "${DOCUMENTROOT_PATH}/${DOMAIN_NAME}/index.html"
+        
     else
         echo "> File ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}/index.html already exists, skipping creation"
     fi
@@ -841,106 +683,68 @@ feature_spawn() {
     echo "     # All done! Check ${DOMAIN_NAME} to see your new configuration in action."
     echo '     #'
     echo '     # File locations:'
-    echo "     # Virtual host configuration: ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+    echo "     # VirtualHost configuration:  ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
     echo "     # DocumentRoot directory:     ${DOCUMENTROOT_PATH}/${DOMAIN_NAME}"
-    if [ "${CHOICE_TLS}" = '1' ] || [ "${CHOICE_TLS}" = '2' ]; then
-        echo "     # Certificate directory:      ${LETSENCRYPT_CERTDIR}/live/${DOMAIN_NAME}"
-    fi
+    echo "     # Certificate directory:      ${LETSENCRYPT_CERTDIR}/live/${DOMAIN_NAME}"
     echo '     ############################################################################'
     echo
 }
 
-feature_despawn() {
-    echo 'work in progress'
-}
-
 feature_example() {
-    echo 'Sparry will create a rather complete example VirtualHost configuration file'
-    echo 'that can be manually editted to taste.'
+    echo 'Sparry will create a example VirtualHost configuration file that can be manually editted to taste.'
     echo
     # ask for DocumentRoot and if empty variable, populate with $DEFAULT_DOCUMENTROOT
-    echo 'Enter domain name (enter for default placeholder):'
-    read -r -p ': ' DOMAIN_NAME
+    echo '(1)  Enter domain name (enter for example.tld):'
+    read -r -p '     : ' DOMAIN_NAME
     if [ -z "${DOMAIN_NAME}" ]; then
         DOMAIN_NAME='example.tld'
-        echo '> default domain example.tld will be used'
+        echo '     > default domain example.tld will be used'
     fi
-    # generate the file itself
-    echo '> Generating example VirtualHost configuration'
-    echo '# apache configuration file generated by sparry' > ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '<VirtualHost *:80>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo "    ServerName ${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo "    ServerAlias www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo "    DocumentRoot ${DEFAULT_DOCUMENTROOT}/${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    # Apache directory control access' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    <Directory "'"${DEFAULT_DOCUMENTROOT}/${DOMAIN_NAME}"'">' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '        Require all granted' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    </Directory>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    # Logging' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    ErrorLog "/var/log/httpd-'"${DOMAIN_NAME}-error.log"'"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    CustomLog "/var/log/httpd-'"${DOMAIN_NAME}-access.log"'" common' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    Header always set Strict-Transport-Security: "max-age=31536000; includeSubDomains;"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    Header always set X-Frame-Options "DENY"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    Header always set Content-Security-Policy: "default-src https://'"${DOMAIN_NAME}"';"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    # Rewrite requests to HTTPS' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    RewriteEngine on' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo "    RewriteCond %{SERVER_NAME} =${DOMAIN_NAME} [OR]" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo "    RewriteCond %{SERVER_NAME} =www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    RewriteRule ^ https://%{SERVER_NAME}%{REQUEST_URI} [END,QSA,R=permanent]' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '</VirtualHost>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '<IfModule mod_ssl.c>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '<VirtualHost *:443>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo "    ServerName ${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo "    ServerAlias www.${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo "    DocumentRoot ${DEFAULT_DOCUMENTROOT}/${DOMAIN_NAME}" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    # Apache directory control access' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    <Directory "'"${DEFAULT_DOCUMENTROOT}/${DOMAIN_NAME}"'">' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '        Require all granted' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    </Directory>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    # Logging' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    ErrorLog "/var/log/httpd-'"${DOMAIN_NAME}-error.log"'"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    CustomLog "/var/log/httpd-'"${DOMAIN_NAME}-access.log"'" common' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    # HTTP Security Headers' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    Header always set Strict-Transport-Security: "max-age=31536000; includeSubDomains;"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    Header always set X-Frame-Options "DENY"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    Header always set X-XSS-Protection: "1; mode=block"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    Header always set X-Content-Type-Options "nosniff"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    Header always set X-Permitted-Cross-Domain-Policies: none' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    Header always set Referrer-Policy same-origin' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '    Header always set Content-Security-Policy: "default-src https://'"${DOMAIN_NAME}"';"' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo "    # Let's Encrypt configuration" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo "    SSLCertificateFile ${LETSENCRYPT_CERTDIR}/live/${DOMAIN_NAME}/fullchain.pem" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo "    SSLCertificateKeyFile ${LETSENCRYPT_CERTDIR}/live/${DOMAIN_NAME}/privkey.pem" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo "    Include ${LETSENCRYPT_CERTDIR}/options-ssl-apache.conf" >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '</VirtualHost>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
-    echo '</IfModule>' >> ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example
+
+    echo '(2)  What base example VirtualHost file do you wish to spawn?'
+    echo '     1 Strict           [enforce: HTTPS] [disable: ext-resource, inline-css, iframes]'
+    echo '     2 Loose            [enforce: HTTPS] [disable: ext-resource, iframes] [enable: inline-css]'
+    echo '     3 Poor             [enforce: HTTPS] [enable: ext-resource, inline-css, iframes]'
+    echo '     4 Weak             [allow: HTTP]    [enable: ext-resource, inline-css, iframes]'
+    echo '     5 None             [disable: HTTP security headers]'
+    echo '     6 Wordpress        VirtualHost configuration for default Wordpress installation'
+    echo '     7 NextCloud        VirtualHost configuration for default NextCloud installation'
+    while true
+        do
+            read -r -p '     [1-5]: ' CHOICE_EXAMPLE_TEMPLATE
+            [ "${CHOICE_EXAMPLE_TEMPLATE}" = '1' ] || [ "${CHOICE_EXAMPLE_TEMPLATE}" = '2' ] || \
+            [ "${CHOICE_EXAMPLE_TEMPLATE}" = '3' ] || [ "${CHOICE_EXAMPLE_TEMPLATE}" = '4' ] || \
+            [ "${CHOICE_EXAMPLE_TEMPLATE}" = '5' ] || [ "${CHOICE_EXAMPLE_TEMPLATE}" = '6' ] || \
+            [ "${CHOICE_EXAMPLE_TEMPLATE}" = '7' ] && break
+            error_type_valid_number
+        done
+
+    # spawn VirtualHost configuration file based on choices
+    echo "     > Downloading base VirtualHost template to ${DOMAIN_NAME}.conf"
+    if [ "${CHOICE_EXAMPLE_TEMPLATE}" = '1' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_strict.conf -o "${DOMAIN_NAME}.conf.example"
+    elif [ "${CHOICE_EXAMPLE_TEMPLATE}" = '2' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_loose.conf -o "${DOMAIN_NAME}.conf.example"
+    elif [ "${CHOICE_EXAMPLE_TEMPLATE}" = '3' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_poor.conf -o "${DOMAIN_NAME}.conf.example"
+    elif [ "${CHOICE_EXAMPLE_TEMPLATE}" = '4' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_weak.conf -o "${DOMAIN_NAME}.conf.example"
+    elif [ "${CHOICE_EXAMPLE_TEMPLATE}" = '5' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_none.conf -o "${DOMAIN_NAME}.conf.example"
+    elif [ "${CHOICE_EXAMPLE_TEMPLATE}" = '6' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_wordpress.conf -o "${DOMAIN_NAME}.conf.example"
+    elif [ "${CHOICE_EXAMPLE_TEMPLATE}" = '7' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_nextcloud.conf -o "${DOMAIN_NAME}.conf.example"
+    fi
+
     # show user relevant file locations in a handy overview
     echo
     echo '     ############################################################################'
     echo "     # All done!"
     echo '     #'
-    echo '     # Example configuration location:'
-    echo "     # Virtual host configuration: ${APACHE_CONFDIR}/${DOMAIN_NAME}.conf.example"
+    echo "     # Virtual host configuration:       ${DOMAIN_NAME}.conf.example"
     echo '     ############################################################################'
     echo
-}
-
-feature_harden() {
-    echo 'work in progress'
 }
 
 #############################################################################

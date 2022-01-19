@@ -179,6 +179,16 @@ The example below uses the 'strict' HTTP Security Headers profile.
 If you have questions/suggestions about Sparry or find bugs, please let us know via the issue tracker.
 
 ## Changelog
+### 1.3.0-RELEASE (19-01-2022)
+- Big refactor of the previous codebase, with the intend to make it much easier to extend the features and templates in the future.
+- Added base templates for VirtualHost configuration files.
+- Updated and improved some language, comments and code.
+- Put some pieces of code in their own function to make things easier to read.
+- Removed the option to not use TLS. From now on, all (non example) generated VirtualHost files need to have TLS enabled. The goal of this software is to provide reasonably secure VirtualHost files, and without TLS this simply isn't possible.
+- Removed the option to only use the www subdomain since in that case you can just enter www.domain.tld in sparry.
+- Added two more profiles for wordpress and nextcloud since they require fairly specific security headers.
+- Switched from STABLE to RELEASE tags.
+
 ### 1.2.0-STABLE (14-06-2020)
 - Added optional configuration file in /usr/local/etc/sparry.conf for additional finetuning of Sparry.
 - Added compatibility with Apache servers that listen on specific IP addresses instead of * [11](https://github.com/nozel-org/freebsd-apache-sparry/issues/11). This can be set in the new configuration file.
