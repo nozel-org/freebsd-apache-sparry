@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #############################################################################
-# Version 1.3.0-RELEASE (19-01-2022)
+# Version 1.3.1-RELEASE (20-01-2022)
 #############################################################################
 
 #############################################################################
@@ -20,7 +20,7 @@
 #############################################################################
 
 # remindbot version
-SPARRY_VERSION='1.3.0'
+SPARRY_VERSION='1.3.1'
 
 # apache parameters
 APACHE_DIR='/usr/local/etc/apache24'
@@ -35,6 +35,7 @@ ARGUMENT_VERSION='0'
 ARGUMENT_HELP='0'
 ARGUMENT_SPAWN='0'
 ARGUMENT_DESPAWN='0'
+ARGUMENT_PROXY='0'
 ARGUMENT_EXAMPLE='0'
 ARGUMENT_NONE='0'
 DNS_RECORDS='0'
@@ -79,6 +80,10 @@ while test -n "$1"; do
             ;;
         --despawn|despawn|-d)
             ARGUMENT_DESPAWN='1'
+            shift
+            ;;
+        --proxy|proxy|-p)
+            ARGUMENT_PROXY='1'
             shift
             ;;
         --example|example|-e)
@@ -248,6 +253,8 @@ sparry_help() {
     echo
     echo "Features:"
     echo " -s, --spawn          Start guided creation of new apache vhost configuration"
+    #echo " -d, --despawn        Start guided removal of apache vhost configuration"
+    #echo " -p, --proxy          Start guided creation of new apache proxy vhost creation"
     echo " -e, --example        Create example vhost configuration for manual editing"
     echo
     echo "Options:"
@@ -377,23 +384,7 @@ request_certificate() {
 #############################################################################
 
 feature_spawn() {
-    # this function consists of three parts:
-    # 1) gather user input          gather information required for creating new web configuration
-    # 2) Validate user input        validate user choices by showing a overview
-    # 3) effectuate user choices    create the web configuration file with chosen parameters
-
     ### 1 GATHER USER INPUT
-    # the following information will be asked:
-    # - what domain name should be used
-    # - whether www subdomain should be included
-    # - what documentroot path should be used
-    # - whether a TLS certificate should be installed
-    # - what email address should be used for let's encrypt
-    # - whether HTTP security headers should be installed
-    # - what type of logging should be used
-    # - whether apache should be restarted afterwards
-    # - add db file with previous sparry based configs for complete management?
-
     echo
     echo 'Sparry will guide you through the creation of a new apache virtual host'
     echo 'configuration file. Please answer the following questions:'
@@ -609,7 +600,7 @@ feature_spawn() {
 
     ### 3 EFFECTUATE USER CHOICES
     check_apache_modules
-    #request_certificate
+    request_certificate
   
     # spawn VirtualHost configuration file based on choices
     echo "> Downloading base VirtualHost template to ${DOMAIN_NAME}.conf"
@@ -636,6 +627,9 @@ feature_spawn() {
     echo "> Customizing VirtualHost configuration in ${DOMAIN_NAME}.conf"
     if [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
         sed -i '' '/ServerAlias www.<domain_name>/d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+        sed -i '' '/RewriteCond %{SERVER_NAME} =www.<domain_name>/d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+        # remove [OR] in 'RewriteCond %{SERVER_NAME} =<domain_name> [OR]'
+        sed -i '' "s/\[OR\]//g" "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
     fi
     if [ "${CHOICE_LOGGING}" = '1' ]; then
         sed -i '' '/CustomLog "/var/log/httpd-<domain_name>-access.log" common/d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
@@ -645,7 +639,7 @@ feature_spawn() {
         sed -i '' '/CustomLog "/var/log/httpd-<domain_name>-access.log" common/d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
         sed -i '' '/ErrorLog "/var/log/httpd-<domain_name>-error.log"" common/d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
     fi
-    sed -i -e s%"<domain_name>"%"${DOMAIN_NAME}"%g "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+    sed -i '' s%"<domain_name>"%"${DOMAIN_NAME}"%g "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
 
     # create DocumentRoot if it not already exists
     if [ ! -d "${DOCUMENTROOT_PATH}/${DOMAIN_NAME}" ]; then
@@ -772,6 +766,8 @@ sparry_main() {
         requirement_curl
         feature_spawn
     elif [ "${ARGUMENT_DESPAWN}" = '1' ]; then
+        error_not_yet_implemented
+    elif [ "${ARGUMENT_PROXY}" = '1' ]; then
         error_not_yet_implemented
     elif [ "${ARGUMENT_EXAMPLE}" = '1' ]; then
         requirement_root
