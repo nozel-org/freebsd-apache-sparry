@@ -16,7 +16,7 @@ Quite easy :). Run `sparry --spawn` and after answering some questions, your Vir
 ## How to install
 Copy `sparry` to `/usr/bin/sparry` (owner=root, group=wheel, permissions=555 (read & execute). This looks something like:
 ```
-wget https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/sparry -O /usr/bin/sparry
+wget https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/sparry -O /usr/bin/sparry
 chown root:wheel /usr/bin/sparry
 chmod 555 /usr/bin/sparry
 ```
