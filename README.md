@@ -3,12 +3,13 @@ Sparry is a acronym for "SPawn Apache viRtualhosts eveRYwhere" (sorry, couldn't 
 
 ## Features
 * **Easy to use**: Sparry is made for (and with!) people that normally would get discouraged if they had to create VirtualHost files with modern minimum security requirements on servers.
-* **Automated basic apache configuration** so you don't have to enable the required modules yourself. 
-* **Automated TLS certificates** with Let's Encrypt's official certbot client.
-* **Automated HTTP Security Headers** based on your use-case (different profiles available).
-* **Automated Error logging** based on your use-case (different options available).
-* **Generation of example virtual host** configuration that can be manually editted.
-* **Made for FreeBSD** and works on basic shell (so no advanced shells like bash or zsh required).
+* **Basic apache configuration** so you don't have to enable the required modules yourself. 
+* **TLS certificates** with Let's Encrypt's official certbot client.
+* **HTTP Security Headers** based on your use-case.
+* **Error and access logging** based on your use-case.
+* **Profiles for reverse proxies** when running a Apache reverse proxy.
+* **Example VirtualHost files** that can be manually editted.
+* **Made for FreeBSD** and works on basic shell.
 
 ## How to use
 Quite easy :). Run `sparry --spawn` and after answering some questions, your VirtualHost configuration file will be spawned. Sparry generates one VirtualHost configuration file (with certificate) for every domain (optionally it includes the `www.` subdomain). Optionally, for more advanced users some configuration parameters can be set in /usr/local/etc/sparry.conf for further finetuning.
