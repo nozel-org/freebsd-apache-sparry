@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #############################################################################
-# Version 1.3.1-RELEASE (20-01-2022)
+# Version 1.4.0-RELEASE (23-01-2022)
 #############################################################################
 
 #############################################################################
@@ -20,7 +20,7 @@
 #############################################################################
 
 # remindbot version
-SPARRY_VERSION='1.3.1'
+SPARRY_VERSION='1.4.0'
 
 # apache parameters
 APACHE_DIR='/usr/local/etc/apache24'
@@ -440,7 +440,7 @@ feature_spawn() {
         echo "     default path ${DOCUMENTROOT_PATH} will be used"
     fi
     # ask whether user wants a tls certificate and validate input
-    echo '(5)  Add TLS certificate?'
+    echo '(5)  Select TLS certificate'
     echo '     1 TLS certificate with RSA key size of 2048 bits (default)'
     echo '     2 TLS certificate with RSA key size of 4096 bits (paranoid)'
     while true
@@ -457,25 +457,40 @@ feature_spawn() {
         echo "(5b) Found email address in sparry.conf, skipping question"
         EMAIL_ADDRESS="${LETSENCRYPT_EMAIL}"
     fi
-    echo '(6)  Add HTTP security headers?'
-    echo '     1 Strict           [enforce: HTTPS] [disable: ext-resource, inline-css, iframes]'
-    echo '     2 Loose            [enforce: HTTPS] [disable: ext-resource, iframes] [enable: inline-css]'
-    echo '     3 Poor             [enforce: HTTPS] [enable: ext-resource, inline-css, iframes]'
-    echo '     4 Weak             [allow: HTTP]    [enable: ext-resource, inline-css, iframes]'
-    echo '     5 None             [disable: HTTP security headers]'
-    echo '     6 Wordpress        VirtualHost configuration for default Wordpress installation'
-    echo '     7 NextCloud        VirtualHost configuration for default NextCloud installation'
+    echo '(6)  Select VirtualHost profile'
+    echo '     General profiles:'
+    echo '     1  Strict           [enforce: HTTPS] [disable: ext-resource, inline-css, iframes]'
+    echo '     2  Loose            [enforce: HTTPS] [disable: ext-resource, iframes] [enable: inline-css]'
+    echo '     3  Poor             [enforce: HTTPS] [enable: ext-resource, inline-css, iframes]'
+    echo '     4  Weak             [allow: HTTP]    [enable: ext-resource, inline-css, iframes]'
+    echo '     5  Disable          [disable: HTTP security headers]'
+    echo ''
+    echo '     Application profiles:'
+    echo '     6  Wordpress        VirtualHost configuration for default Wordpress installation'
+    echo '     7  Nextcloud        VirtualHost configuration for default Nextcloud installation'
+    echo ''
+    echo '     Reverse proxy profiles:'
+    echo '     8  Proxy Strict     Reverse Proxy VirtualHost configuration based on Strict profile'
+    echo '     9  Proxy Loose      Reverse Proxy VirtualHost configuration based on Loose profile'
+    echo '     10 Proxy Poor       Reverse Proxy VirtualHost configuration based on Poor profile'
+    echo '     11 Proxy Weak       Reverse Proxy VirtualHost configuration based on Weak profile'
+    echo '     12 Proxy Disable    Reverse Proxy VirtualHost configuration based on Disable profile'
+    echo '     13 Proxy Wordpress  Reverse Proxy VirtualHost configuration based on Wordpress profile'
+    echo '     14 Proxy Nextcloud  Reverse Proxy VirtualHost configuration based on Nextcloud profile'
     while true
         do
-            read -r -p '     [1-5]: ' CHOICE_SECURITY_HEADERS
+            read -r -p '     [1-14]: ' CHOICE_SECURITY_HEADERS
             [ "${CHOICE_SECURITY_HEADERS}" = '1' ] || [ "${CHOICE_SECURITY_HEADERS}" = '2' ] || \
             [ "${CHOICE_SECURITY_HEADERS}" = '3' ] || [ "${CHOICE_SECURITY_HEADERS}" = '4' ] || \
             [ "${CHOICE_SECURITY_HEADERS}" = '5' ] || [ "${CHOICE_SECURITY_HEADERS}" = '6' ] || \
-            [ "${CHOICE_SECURITY_HEADERS}" = '7' ] && break
+            [ "${CHOICE_SECURITY_HEADERS}" = '7' ] || [ "${CHOICE_SECURITY_HEADERS}" = '8' ] || \
+            [ "${CHOICE_SECURITY_HEADERS}" = '9' ] || [ "${CHOICE_SECURITY_HEADERS}" = '10' ] || \
+            [ "${CHOICE_SECURITY_HEADERS}" = '11' ] || [ "${CHOICE_SECURITY_HEADERS}" = '12' ] || \
+            [ "${CHOICE_SECURITY_HEADERS}" = '13' ] || [ "${CHOICE_SECURITY_HEADERS}" = '14' ] && break
             error_type_valid_number
         done
     # ask what logging configuration should be used and validate input
-    echo '(7)  Add logging?'
+    echo '(7)  Select logging'
     echo '     1 Error logging'
     echo '     2 Access logging'
     echo '     3 Error and access logging'
@@ -516,7 +531,7 @@ feature_spawn() {
         echo "     # TLS email address:  ${EMAIL_ADDRESS}"
     fi
     if [ "${CHOICE_SECURITY_HEADERS}" = '1' ]; then
-        echo '     # Selected profile:   strict'
+        echo '     # Selected profile:   Strict'
         echo '     # Security headers:'
         echo '     #   Strict-Transport-Security: "max-age=31536000; includeSubDomains;"'
         echo '     #   X-Frame-Options "DENY"'
@@ -526,7 +541,7 @@ feature_spawn() {
         echo '     #   Referrer-Policy same-origin'
         echo "     #   Content-Security-Policy: default-src https://${DOMAIN_NAME}"
     elif [ "${CHOICE_SECURITY_HEADERS}" = '2' ]; then
-        echo '     # Selected profile:   loose'
+        echo '     # Selected profile:   Loose'
         echo '     # Security headers:'
         echo '     #   Strict-Transport-Security: "max-age=31536000; includeSubDomains;"'
         echo '     #   X-Frame-Options "DENY"'
@@ -536,7 +551,7 @@ feature_spawn() {
         echo '     #   Referrer-Policy same-origin'
         echo "     #   Content-Security-Policy: default-src https://${DOMAIN_NAME}; style-src 'unsafe-inline'"
     elif [ "${CHOICE_SECURITY_HEADERS}" = '3' ]; then
-        echo '     # Selected profile:   poor'
+        echo '     # Selected profile:   Poor'
         echo '     # Security headers:'
         echo '     #   Strict-Transport-Security: "max-age=31536000; includeSubDomains;"'
         echo '     #   X-Frame-Options "SAMEORIGIN"'
@@ -546,7 +561,7 @@ feature_spawn() {
         echo '     #   Referrer-Policy same-origin'
         echo "     #   Content-Security-Policy: default-src https:; style-src 'unsafe-inline'"
     elif [ "${CHOICE_SECURITY_HEADERS}" = '4' ]; then
-        echo '     # Selected profile:   week'
+        echo '     # Selected profile:   Weak'
         echo '     # Security headers:'
         echo '     #   X-Frame-Options "SAMEORIGIN"'
         echo '     #   X-XSS-Protection: "1; mode=block"'
@@ -554,10 +569,10 @@ feature_spawn() {
         echo '     #   X-Permitted-Cross-Domain-Policies: none'
         echo '     #   Referrer-Policy same-origin'
     elif [ "${CHOICE_SECURITY_HEADERS}" = '5' ]; then
-        echo '     # Selected profile:   no security headers'
+        echo '     # Selected profile:   Disable'
         echo '     # Security headers:   Disabled'
     elif [ "${CHOICE_SECURITY_HEADERS}" = '6' ]; then
-        echo '     # Selected profile:   wordpress'
+        echo '     # Selected profile:   Wordpress'
         echo '     # Security headers:'
         echo '     #   Header always set Strict-Transport-Security: "max-age=31536000; includeSubDomains;"'
         echo '     #   Header always set X-Frame-Options "SAMEORIGIN"'
@@ -567,7 +582,62 @@ feature_spawn() {
         echo '     #   Header always set Referrer-Policy same-origin'
         echo '     #   Header always set Content-Security-Policy "default-src https: data: 'unsafe-inline' 'unsafe-eval'"'
     elif [ "${CHOICE_SECURITY_HEADERS}" = '7' ]; then
-        echo '     # Selected profile:   nextcloud'
+        echo '     # Selected profile:   Nextcloud'
+        echo '     # Security headers:'
+        echo '     #   Header always set Strict-Transport-Security "max-age=15552000; includeSubDomains"'
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '8' ]; then
+        echo '     # Selected profile:   Proxy Strict'
+        echo '     # Security headers:'
+        echo '     #   Strict-Transport-Security: "max-age=31536000; includeSubDomains;"'
+        echo '     #   X-Frame-Options "DENY"'
+        echo '     #   X-XSS-Protection: "1; mode=block"'
+        echo '     #   X-Content-Type-Options "nosniff"'
+        echo '     #   X-Permitted-Cross-Domain-Policies: none'
+        echo '     #   Referrer-Policy same-origin'
+        echo "     #   Content-Security-Policy: default-src https://${DOMAIN_NAME}"
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '9' ]; then
+        echo '     # Selected profile:   Proxy Loose'
+        echo '     # Security headers:'
+        echo '     #   Strict-Transport-Security: "max-age=31536000; includeSubDomains;"'
+        echo '     #   X-Frame-Options "DENY"'
+        echo '     #   X-XSS-Protection: "1; mode=block"'
+        echo '     #   X-Content-Type-Options "nosniff"'
+        echo '     #   X-Permitted-Cross-Domain-Policies: none'
+        echo '     #   Referrer-Policy same-origin'
+        echo "     #   Content-Security-Policy: default-src https://${DOMAIN_NAME}; style-src 'unsafe-inline'"
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '10' ]; then
+        echo '     # Selected profile:   Proxy Poor'
+        echo '     # Security headers:'
+        echo '     #   Strict-Transport-Security: "max-age=31536000; includeSubDomains;"'
+        echo '     #   X-Frame-Options "SAMEORIGIN"'
+        echo '     #   X-XSS-Protection: "1; mode=block"'
+        echo '     #   X-Content-Type-Options "nosniff"'
+        echo '     #   X-Permitted-Cross-Domain-Policies: none'
+        echo '     #   Referrer-Policy same-origin'
+        echo "     #   Content-Security-Policy: default-src https:; style-src 'unsafe-inline'"
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '4' ]; then
+        echo '     # Selected profile:   Proxy Weak'
+        echo '     # Security headers:'
+        echo '     #   X-Frame-Options "SAMEORIGIN"'
+        echo '     #   X-XSS-Protection: "1; mode=block"'
+        echo '     #   X-Content-Type-Options "nosniff"'
+        echo '     #   X-Permitted-Cross-Domain-Policies: none'
+        echo '     #   Referrer-Policy same-origin'
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '5' ]; then
+        echo '     # Selected profile:   Proxy Disable'
+        echo '     # Security headers:   Disabled'
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '6' ]; then
+        echo '     # Selected profile:   Proxy Wordpress'
+        echo '     # Security headers:'
+        echo '     #   Header always set Strict-Transport-Security: "max-age=31536000; includeSubDomains;"'
+        echo '     #   Header always set X-Frame-Options "SAMEORIGIN"'
+        echo '     #   Header always set X-XSS-Protection: "1; mode=block"'
+        echo '     #   Header always set X-Content-Type-Options "nosniff"'
+        echo '     #   Header always set X-Permitted-Cross-Domain-Policies: none'
+        echo '     #   Header always set Referrer-Policy same-origin'
+        echo '     #   Header always set Content-Security-Policy "default-src https: data: 'unsafe-inline' 'unsafe-eval'"'
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '7' ]; then
+        echo '     # Selected profile:   Proxy Nextcloud'
         echo '     # Security headers:'
         echo '     #   Header always set Strict-Transport-Security "max-age=15552000; includeSubDomains"'
     fi
@@ -613,11 +683,25 @@ feature_spawn() {
     elif [ "${CHOICE_SECURITY_HEADERS}" = '4' ]; then
         curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_weak.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
     elif [ "${CHOICE_SECURITY_HEADERS}" = '5' ]; then
-        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_none.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_disable.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
     elif [ "${CHOICE_SECURITY_HEADERS}" = '6' ]; then
         curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_wordpress.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
     elif [ "${CHOICE_SECURITY_HEADERS}" = '7' ]; then
         curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_nextcloud.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '8' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_proxy_strict.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '9' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_proxy_loose.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '10' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_proxy_poor.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '11' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_proxy_weak.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '12' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_proxy_disable.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '13' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_proxy_wordpress.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+    elif [ "${CHOICE_SECURITY_HEADERS}" = '14' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_proxy_nextcloud.conf -o "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
     fi
 
     echo "> Setting ownership and permissions on ${DOMAIN_NAME}.conf"
@@ -632,12 +716,13 @@ feature_spawn() {
         sed -i '' "s/\[OR\]//g" "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
     fi
     if [ "${CHOICE_LOGGING}" = '1' ]; then
-        sed -i '' '/CustomLog "/var/log/httpd-<domain_name>-access.log" common/d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+        sed -i '' '\|CustomLog "/var/log/httpd-<domain_name>-access.log" common|d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
     elif [ "${CHOICE_LOGGING}" = '2' ]; then
-        sed -i '' '/ErrorLog "/var/log/httpd-<domain_name>-error.log"" common/d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+        sed -i '' '\|ErrorLog "/var/log/httpd-<domain_name>-error.log"|d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
     elif [ "${CHOICE_LOGGING}" = '4' ]; then
-        sed -i '' '/CustomLog "/var/log/httpd-<domain_name>-access.log" common/d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
-        sed -i '' '/ErrorLog "/var/log/httpd-<domain_name>-error.log"" common/d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+        sed -i '' '\|# Logging|d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+        sed -i '' '\|CustomLog "/var/log/httpd-<domain_name>-access.log" common|d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
+        sed -i '' '\|ErrorLog "/var/log/httpd-<domain_name>-error.log"|d' "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
     fi
     sed -i '' s%"<domain_name>"%"${DOMAIN_NAME}"%g "${APACHE_CONFDIR}/${DOMAIN_NAME}.conf"
 
@@ -695,21 +780,36 @@ feature_example() {
         echo '     > default domain example.tld will be used'
     fi
 
-    echo '(2)  What base example VirtualHost file do you wish to spawn?'
-    echo '     1 Strict           [enforce: HTTPS] [disable: ext-resource, inline-css, iframes]'
-    echo '     2 Loose            [enforce: HTTPS] [disable: ext-resource, iframes] [enable: inline-css]'
-    echo '     3 Poor             [enforce: HTTPS] [enable: ext-resource, inline-css, iframes]'
-    echo '     4 Weak             [allow: HTTP]    [enable: ext-resource, inline-css, iframes]'
-    echo '     5 None             [disable: HTTP security headers]'
-    echo '     6 Wordpress        VirtualHost configuration for default Wordpress installation'
-    echo '     7 NextCloud        VirtualHost configuration for default NextCloud installation'
+    echo '(2)  What example VirtualHost file do you wish to spawn?'
+    echo '     General profiles:'
+    echo '     1  Strict           [enforce: HTTPS] [disable: ext-resource, inline-css, iframes]'
+    echo '     2  Loose            [enforce: HTTPS] [disable: ext-resource, iframes] [enable: inline-css]'
+    echo '     3  Poor             [enforce: HTTPS] [enable: ext-resource, inline-css, iframes]'
+    echo '     4  Weak             [allow: HTTP]    [enable: ext-resource, inline-css, iframes]'
+    echo '     5  Disable          [disable: HTTP security headers]'
+    echo ''
+    echo '     Application profiles:'
+    echo '     6  Wordpress        VirtualHost configuration for default Wordpress installation'
+    echo '     7  Nextcloud        VirtualHost configuration for default Nextcloud installation'
+    echo ''
+    echo '     Reverse proxy profiles:'
+    echo '     8  Proxy Strict     Reverse Proxy VirtualHost configuration based on Strict profile'
+    echo '     9  Proxy Loose      Reverse Proxy VirtualHost configuration based on Loose profile'
+    echo '     10 Proxy Poor       Reverse Proxy VirtualHost configuration based on Poor profile'
+    echo '     11 Proxy Weak       Reverse Proxy VirtualHost configuration based on Weak profile'
+    echo '     12 Proxy Disable    Reverse Proxy VirtualHost configuration based on Disable profile'
+    echo '     13 Proxy Wordpress  Reverse Proxy VirtualHost configuration based on Wordpress profile'
+    echo '     14 Proxy Nextcloud  Reverse Proxy VirtualHost configuration based on Nextcloud profile'
     while true
         do
-            read -r -p '     [1-5]: ' CHOICE_EXAMPLE_TEMPLATE
-            [ "${CHOICE_EXAMPLE_TEMPLATE}" = '1' ] || [ "${CHOICE_EXAMPLE_TEMPLATE}" = '2' ] || \
-            [ "${CHOICE_EXAMPLE_TEMPLATE}" = '3' ] || [ "${CHOICE_EXAMPLE_TEMPLATE}" = '4' ] || \
-            [ "${CHOICE_EXAMPLE_TEMPLATE}" = '5' ] || [ "${CHOICE_EXAMPLE_TEMPLATE}" = '6' ] || \
-            [ "${CHOICE_EXAMPLE_TEMPLATE}" = '7' ] && break
+            read -r -p '     [1-14]: ' CHOICE_EXAMPLE_TEMPLATE
+            [ "${CHOICE_SECURITY_HEADERS}" = '1' ] || [ "${CHOICE_SECURITY_HEADERS}" = '2' ] || \
+            [ "${CHOICE_SECURITY_HEADERS}" = '3' ] || [ "${CHOICE_SECURITY_HEADERS}" = '4' ] || \
+            [ "${CHOICE_SECURITY_HEADERS}" = '5' ] || [ "${CHOICE_SECURITY_HEADERS}" = '6' ] || \
+            [ "${CHOICE_SECURITY_HEADERS}" = '7' ] || [ "${CHOICE_SECURITY_HEADERS}" = '8' ] || \
+            [ "${CHOICE_SECURITY_HEADERS}" = '9' ] || [ "${CHOICE_SECURITY_HEADERS}" = '10' ] || \
+            [ "${CHOICE_SECURITY_HEADERS}" = '11' ] || [ "${CHOICE_SECURITY_HEADERS}" = '12' ] || \
+            [ "${CHOICE_SECURITY_HEADERS}" = '13' ] || [ "${CHOICE_SECURITY_HEADERS}" = '14' ] && break
             error_type_valid_number
         done
 
@@ -724,11 +824,25 @@ feature_example() {
     elif [ "${CHOICE_EXAMPLE_TEMPLATE}" = '4' ]; then
         curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_weak.conf -o "${DOMAIN_NAME}.conf.example"
     elif [ "${CHOICE_EXAMPLE_TEMPLATE}" = '5' ]; then
-        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_none.conf -o "${DOMAIN_NAME}.conf.example"
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_disable.conf -o "${DOMAIN_NAME}.conf.example"
     elif [ "${CHOICE_EXAMPLE_TEMPLATE}" = '6' ]; then
         curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_wordpress.conf -o "${DOMAIN_NAME}.conf.example"
     elif [ "${CHOICE_EXAMPLE_TEMPLATE}" = '7' ]; then
         curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_nextcloud.conf -o "${DOMAIN_NAME}.conf.example"
+    elif [ "${CHOICE_EXAMPLE_TEMPLATE}" = '8' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_proxy_strict.conf -o "${DOMAIN_NAME}.conf.example"
+    elif [ "${CHOICE_EXAMPLE_TEMPLATE}" = '9' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_proxy_loose.conf -o "${DOMAIN_NAME}.conf.example"
+    elif [ "${CHOICE_EXAMPLE_TEMPLATE}" = '10' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_proxy_poor.conf -o "${DOMAIN_NAME}.conf.example"
+    elif [ "${CHOICE_EXAMPLE_TEMPLATE}" = '11' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_proxy_weak.conf -o "${DOMAIN_NAME}.conf.example"
+    elif [ "${CHOICE_EXAMPLE_TEMPLATE}" = '12' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_proxy_disable.conf -o "${DOMAIN_NAME}.conf.example"
+    elif [ "${CHOICE_EXAMPLE_TEMPLATE}" = '13' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_proxy_wordpress.conf -o "${DOMAIN_NAME}.conf.example"
+    elif [ "${CHOICE_EXAMPLE_TEMPLATE}" = '14' ]; then
+        curl -s https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/templates/template_virtualhost_proxy_nextcloud.conf -o "${DOMAIN_NAME}.conf.example"
     fi
 
     # show user relevant file locations in a handy overview

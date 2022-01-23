@@ -49,15 +49,27 @@ configuration file. Please answer the following questions:
      2 TLS certificate with RSA key size of 4096 bits (paranoid)
      [1-2]: 2
 (5b) Enter Let's Encrypt email address: mail@domain.tld
-(6)  Add HTTP security headers?
-     1 Strict           [enforce: HTTPS] [disable: ext-resource, inline-css, iframes]
-     2 Loose            [enforce: HTTPS] [disable: ext-resource, iframes] [enable: inline-css]
-     3 Poor             [enforce: HTTPS] [enable: ext-resource, inline-css, iframes]
-     4 Weak             [allow: HTTP]    [enable: ext-resource, inline-css, iframes]
-     5 None             [disable: HTTP security headers]
-     6 Wordpress        VirtualHost configuration for default Wordpress installation
-     7 NextCloud        VirtualHost configuration for default NextCloud installation
-     [1-5]: 1
+(6)  Select VirtualHost profile
+     General profiles:
+     1  Strict           [enforce: HTTPS] [disable: ext-resource, inline-css, iframes]
+     2  Loose            [enforce: HTTPS] [disable: ext-resource, iframes] [enable: inline-css]
+     3  Poor             [enforce: HTTPS] [enable: ext-resource, inline-css, iframes]
+     4  Weak             [allow: HTTP]    [enable: ext-resource, inline-css, iframes]
+     5  Disable          [disable: HTTP security headers]
+
+     Application profiles:
+     6  Wordpress        VirtualHost configuration for default Wordpress installation
+     7  Nextcloud        VirtualHost configuration for default Nextcloud installation
+
+     Reverse proxy profiles:
+     8  Proxy Strict     Reverse Proxy VirtualHost configuration based on Strict profile
+     9  Proxy Loose      Reverse Proxy VirtualHost configuration based on Loose profile
+     10 Proxy Poor       Reverse Proxy VirtualHost configuration based on Poor profile
+     11 Proxy Weak       Reverse Proxy VirtualHost configuration based on Weak profile
+     12 Proxy Disable    Reverse Proxy VirtualHost configuration based on None profile
+     13 Proxy Wordpress  Reverse Proxy VirtualHost configuration based on Wordpress profile
+     14 Proxy Nextcloud  Reverse Proxy VirtualHost configuration based on Nextcloud profile
+     [1-14]: 1
 (7)  Add logging?
      1 Error logging
      2 Access logging
@@ -190,6 +202,12 @@ root@webserver:/ # /usr/local/etc/apache24/Includes/example.tld.conf
 If you have questions, suggestion or find bugs, please let us know via Issues and Discussions.
 
 ## Changelog
+### 1.4.0-RELEASE (23-01-2022)
+- Added profiles for Apache based reverse proxies.
+- Removed DocumentRoot and Directory directives in the http templates.
+- Changed some language to be more consistent.
+- Fixed a bug that didn't remove unwanted logging directives.
+
 ### 1.3.1-RELEASE (20-01-2022)
 - When only the primary domain (without www) is selected, the apache http -> https rule will be set correctly as well.
 - Made some preparations for proxy functionality.
