@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #############################################################################
-# Version 1.4.0-RELEASE (23-01-2022)
+# Version 1.4.1-RELEASE (23-01-2022)
 #############################################################################
 
 #############################################################################
@@ -20,7 +20,7 @@
 #############################################################################
 
 # remindbot version
-SPARRY_VERSION='1.4.0'
+SPARRY_VERSION='1.4.1'
 
 # apache parameters
 APACHE_DIR='/usr/local/etc/apache24'
@@ -366,14 +366,10 @@ request_certificate() {
     if [ "${CHOICE_TLS}" = '1' ] && [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
         certbot certonly --standalone --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 2048 --domain ${DOMAIN_NAME}
     elif [ "${CHOICE_TLS}" = '1' ] && [ "${CHOICE_SUBDOMAIN}" = '2' ]; then
-        certbot certonly --standalone --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 2048 --domain www.${DOMAIN_NAME}
-    elif [ "${CHOICE_TLS}" = '1' ] && [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
         certbot certonly --standalone --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 2048 --domain ${DOMAIN_NAME} --domain www.${DOMAIN_NAME}
     elif [ "${CHOICE_TLS}" = '2' ] && [ "${CHOICE_SUBDOMAIN}" = '1' ]; then
         certbot certonly --standalone --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 4096 --domain ${DOMAIN_NAME}
     elif [ "${CHOICE_TLS}" = '2' ] && [ "${CHOICE_SUBDOMAIN}" = '2' ]; then
-        certbot certonly --standalone --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 4096 --domain www.${DOMAIN_NAME}
-    elif [ "${CHOICE_TLS}" = '2' ] && [ "${CHOICE_SUBDOMAIN}" = '3' ]; then
         certbot certonly --standalone --quiet --non-interactive --agree-tos --email ${EMAIL_ADDRESS} --cert-name ${DOMAIN_NAME} --rsa-key-size 4096 --domain ${DOMAIN_NAME} --domain www.${DOMAIN_NAME}
     fi
     echo '> Certificate received'
