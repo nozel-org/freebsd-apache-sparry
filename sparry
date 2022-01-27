@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #############################################################################
-# Version 1.4.1-RELEASE (23-01-2022)
+# Version 1.4.2-RELEASE (27-01-2022)
 #############################################################################
 
 #############################################################################
@@ -20,7 +20,7 @@
 #############################################################################
 
 # remindbot version
-SPARRY_VERSION='1.4.1'
+SPARRY_VERSION='1.4.2'
 
 # apache parameters
 APACHE_DIR='/usr/local/etc/apache24'
@@ -318,7 +318,7 @@ check_apache_modules() {
     fi
     # make sure apache listens on port 443
     echo '> Checking if apache listens on port 443'
-    grep --line-regexp --quiet '^Listen.*443$' ${APACHE_DIR}/httpd.conf
+    grep --line-regexp --quiet '^Listen.*443.*$' ${APACHE_DIR}/httpd.conf
     if [ "${?}" -eq '0' ]; then
         echo '> Apache is already listening on port 443'
     else

@@ -203,6 +203,13 @@ root@webserver:/ # /usr/local/etc/apache24/Includes/example.tld.conf
 If you have questions, suggestion or find bugs, please let us know via Issues and Discussions.
 
 ## Changelog
+### 1.4.2-RELEASE (27-01-2022)
+- Reworked the check on the Listen 443 directive in httpd.conf to also work when the user added a trailing space to the diretive.
+
+### 1.4.1-RELEASE (23-01-2022)
+- Fixed a leftover bug due to the big refactor in 1.3.0.
+- Small consistency improvement to proxy VirtualHost templates.
+
 ### 1.4.0-RELEASE (23-01-2022)
 - Added profiles for Apache based reverse proxies.
 - Removed DocumentRoot and Directory directives in the http templates.
