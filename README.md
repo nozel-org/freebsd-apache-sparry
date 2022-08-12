@@ -15,11 +15,11 @@ Sparry is a acronym for "SPawn Apache viRtualhosts eveRYwhere" (sorry, couldn't 
 Quite easy :). Run `sparry --spawn` and after answering some questions, your VirtualHost configuration file will be spawned. Sparry generates one VirtualHost configuration file (with certificate) for every domain (optionally it includes the `www.` subdomain). Optionally, for more advanced users some configuration parameters can be set in /usr/local/etc/sparry.conf for further finetuning.
 
 ## How to install
-Copy `sparry` to `/usr/bin/sparry` (owner=root, group=wheel, permissions=555 (read & execute). This looks something like:
+Copy `sparry` to `/usr/local/bin/sparry` (owner=root, group=wheel, permissions=555 (read & execute). This looks something like:
 ```
-wget https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/sparry -O /usr/bin/sparry
-chown root:wheel /usr/bin/sparry
-chmod 555 /usr/bin/sparry
+wget https://raw.githubusercontent.com/nozel-org/freebsd-apache-sparry/master/sparry -O /usr/local/bin/sparry
+chown root:wheel /usr/local/bin/sparry
+chmod 555 /usr/local/bin/sparry
 ```
 
 ## Examples
